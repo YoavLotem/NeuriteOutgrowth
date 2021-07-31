@@ -7,7 +7,7 @@ from skan import Skeleton, summarize
 from skimage.morphology import watershed
 from Computer_Vision_Pipeline.Utils.utils import save_pickle, append_dict, sort_wells, continueOrNot, byFieldNum
 from Computer_Vision_Pipeline.Utils.Loading_Models import nucModel, neurite_model
-from Computer_Vision_Pipeline.Utils.segmentation_utils import create_nuc_im, findneu, foreground
+from Computer_Vision_Pipeline.Utils.segmentation_utils import segmentNuclei, segmentNeurites, segmentForeground
 from Computer_Vision_Pipeline.Utils.image_utils import Backscatter_flag
 from Computer_Vision_Pipeline.Utils.graph_representation_utils import create_graph
 
@@ -15,11 +15,11 @@ def single_field_procedure(folder, image_name):
     G = nx.Graph()
     Fitc_image = cv2.imread(os.path.join(folder, image_name), 0)
     dapi_image = cv2.imread(os.path.join(folder, image_name.replace('FITC', 'DAPI')))
-    segmented_image = foreground(Fitc_image)
-    nuc_im, centroids, apoptosis_fraction = create_nuc_im(dapi_image, segmented_image, nucModel)
+    segmented_image = segmentForeground(Fitc_image)
+    nuc_im, centroids, apoptosis_fraction = segmentNuclei(dapi_image, segmented_image, nucModel)
     nodes_list = {nuc_num: tuple(centroids[nuc_num])[::-1] for nuc_num in range(1, len(centroids))}
     G.add_nodes_from(nodes_list)
-    mask = findneu(Fitc_image, neurite_model)
+    mask = segmentNeurites(Fitc_image, neurite_model)
     seg = watershed(-1*Fitc_image, nuc_im, watershed_line=True, mask=segmented_image)
     Y, X = np.ogrid[:2048, :2048]
     num_neurites, labels, _, _ = cv2.connectedComponentsWithStats(mask.astype('uint8'))

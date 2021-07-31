@@ -2,118 +2,396 @@ from sklearn.mixture import GaussianMixture
 import cv2
 import numpy as np
 
-def postProcessing(mask, thr=100):
+def applyPostProcessing(binary_prd, thr=100):
     """
-    This function performs post-processing for a binary segmentation map by
+    Performs post-processing on a binary segmentation prediction by
     removing connected components whose size [pixels] is smaller than a provided threshold
-    :param mask: Binary segmentation map before pre-processing (numpy array)
-    :param thr: Threshold (int) that indicates the minimum size of a connected
-     component that will be kept
-    :return: Binary segmentation map after removing small connected components (numpy array)
-    """
-    nb_components, output, stats, _ = cv2.connectedComponentsWithStats(mask.astype('uint8'), connectivity=8)
-    sizes = stats[1:, -1];
-    nb_components = nb_components - 1
-    mask2 = np.zeros((2048, 2048))
 
-    # cleaning the image from small particles
+    Parameters
+    ----------
+    binary_prd: ndarray
+        2D array containing data with boolean type
+        Binary segmentation prediction before pre-processing
+    thr: int or float
+        Indicates the minimum size of a connected component that will remain
+
+    Returns
+    -------
+    new_binary_prd: ndarray
+        2D array containing data with boolean type
+        Binary segmentation prediction after removing connected components smaller than threshold
+    """
+
+    # extract the connected components in the image and their respective statistics
+    # the first component is the background so we remove it
+    nb_components, output, stats, _ = cv2.connectedComponentsWithStats(binary_prd.astype('uint8'), connectivity=8)
+    sizes = stats[1:, -1]
+    nb_components = nb_components - 1
+
+    # initializing a new binary prediction array and inserting it with the connected components larger than threshold
+    new_binary_prd = np.zeros((2048, 2048))
     for i in range(0, nb_components):
         if sizes[i] >= thr:
-            mask2[output == i + 1] = 1
-    return mask2
+            new_binary_prd[output == i + 1] = 1
+    return new_binary_prd
 
-def findneu(image, neurite_model):
+def applyPreProcesing(morphology_image):
+    """
+    Applies pre-processing to the input morphology image(FITC) prior to inference using the neurite segmentation model
+
+    Parameters
+    ----------
+    morphology_image: ndarray
+        2D array containing data with float type
+        Single channel grayscale morphology image
+
+    Returns
+    -------
+    X: ndarray
+        4D array containing data with float type
+        Input image after pre-processing
+    """
+    # applying Contrast Limited Adaptive Histogram Equalization (CLAHE) to improve contrast
+    # than the same pre-processing procedure as in training: subtracting the mean and dividing by 255
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    image = clahe.apply(image)
-    image = image - np.mean(image)
-    image = image / 255
-    X = image[np.newaxis, :, :, np.newaxis]
+    morphology_image = clahe.apply(morphology_image)
+    morphology_image = morphology_image - np.mean(morphology_image)
+    morphology_image = morphology_image / 255
+    # adding more channels to turn image into a "batch" for deep learning model
+    X = morphology_image[np.newaxis, :, :, np.newaxis]
+    return X
+
+def segmentNeurites(morphology_image, neurite_model):
+    """
+    Predicts a semantic segmentation mask of neurite's pixels in the
+    input morphology image using the neurite segmentation model.
+
+    Parameters
+    ----------
+    morphology_image: ndarray
+        2D array containing data with float type
+        Single channel grayscale morphology image
+    neurite_model: Keras model
+        CNN for neurite semantic segmentation
+
+    Returns
+    -------
+    segmentation_result: ndarray
+        2D array containing data with boolean type
+        predicted neurite segmentation mask
+
+    """
+
+    X = applyPreProcesing(morphology_image)
+
+    # using the neurite segmentation model for predicting the neurites pixels (probability for each pixel),
+    # thresholding the probability map at 0.5 and applying post-processing
     prd = neurite_model.predict(X, steps=1)
-    prd = prd[0, :, :, 0]
-    prd = prd > 0.5
-    mask = postProcessing(prd)
-    return mask
+    binary_prd = prd[0, :, :, 0] > 0.5
+    segmentation_result = applyPostProcessing(binary_prd)
+    return segmentation_result
 
-def foreground(FITC):
-    FITC2 = cv2.resize(FITC, (512, 512), interpolation=cv2.INTER_AREA)
-    classif = GaussianMixture(n_components=2)
-    classif.fit(FITC2.reshape((FITC2.size, 1)))
-    threshold = np.mean(classif.means_)
-    cells = FITC > threshold
-    return cells
+def segmentForeground(morphology_image):
+    """
+    Predicts a semantic segmentation mask of the cells forground using a threshold selected as
+    the mean of two Gaussian Mixture compopnents fitted to the background and foreground pixels intensity respectively.
+
+    Parameters
+    ----------
+    morphology_image: ndarray
+        2D array containing data with float type
+        Single channel grayscale morphology image
+
+    Returns
+    -------
+    segmentation_result: ndarray
+        2D array containing data with boolean type
+        predicted cell foreground segmentation mask
+    """
+
+    # down sample the image for better performance
+    down_sampled_morphology_image = cv2.resize(morphology_image, (512, 512), interpolation=cv2.INTER_AREA)
+    # fit a Gaussian mixture model with 2 components
+    gmm_classifier = GaussianMixture(n_components=2)
+    gmm_classifier.fit(down_sampled_morphology_image.reshape((down_sampled_morphology_image.size, 1)))
+    # set the threshold as the average of the connected components' means
+    threshold = np.mean(gmm_classifier.means_)
+    # A pixel is considered a foreground pixel if its intensity is higher than threshold
+    segmentation_result = morphology_image > threshold
+    return segmentation_result
 
 
-def create_nuc_im(dapi_im, segmented_image, nucModel):
-    # detecting the nuclei using mask rcnn (divide the image to 4 for case of over 1000 cells)
-    nuc_markers_total = np.zeros((2048, 2048))
-    counter = 1
+def segmentNucleiByQuarters(dapi_im, nucModel):
+    """
+    Performs Nuclei instance segmentation to the DAPI image by dividing it to 4 quarters
+    and performing instance segmentation to each quarter seperately, then combining the results.
+    This procedure allows the model to detect a larger amount of cells in the image as the
+    limitation of the model is up to 1000 cells, this procedure allows the model to detect up to 4000 cells
+
+    Parameters
+    ----------
+    dapi_im: ndarray
+        2D array containing data with float type
+        Single channel grayscale Nuclei(DAPI) image
+
+    nucModel: Instance of class MaskRCNN
+        Mask RCNN model for Nuclei instance segmentation
+
+    Returns
+    -------
+    nuclei_segmentation: ndarray
+        2D array containing data with int type
+        Nuclei instance segmentation results for the entire DAPI image, each integer represents a different nucleus
+    nuclei_count: int
+        Number of overall nuclei detected in the DAPI image
+    """
+
+    # Initialize an image to aggregate the instance segmentation from all 4 quarters and a global
+    # nuclei_count to keep track of individual nuclei numbers
+    nuclei_segmentation = np.zeros((2048, 2048))
+    nuclei_count = 1
     for i in range(2):
         for j in range(2):
+            # detect the nuclei in a quarter of the image
             quarter_dapi = dapi_im[i * 1024:(i + 1) * 1024, j * 1024:(j + 1) * 1024, :]
             results = nucModel.detect([quarter_dapi], verbose=0)
-            m = results[0]['masks']
-            numnucs = np.shape(m)[2]
-            nuc_markers = np.zeros((1024, 1024))
-            for idx in range(numnucs):
-                mask = m[:, :, idx]
-                nuc_markers[mask] = counter
-                counter += 1
-            nuc_markers_total[i * 1024:(i + 1) * 1024, j * 1024:(j + 1) * 1024] = nuc_markers
+            mask_per_nucleus = results[0]['masks']  # a single channel for each detected nuclei with booleans indicating its location
+            num_nuclei = np.shape(mask_per_nucleus)[2]
+            # aggregate the individual detected instance segmentation masks into a single 2d image
+            nuclei_segmentation_quarter = np.zeros((1024, 1024))
+            for idx in range(num_nuclei):
+                mask = mask_per_nucleus[:, :, idx]
+                nuclei_segmentation_quarter[mask] = nuclei_count
+                nuclei_count += 1
+            # insert the instance segmentation result of a quarter image in the total image results
+            nuclei_segmentation[i * 1024:(i + 1) * 1024, j * 1024:(j + 1) * 1024] = nuclei_segmentation_quarter
+    return nuclei_segmentation, nuclei_count
 
-    # detect nucleuses that might have been splitted in the middle by partition to quarters
-    splitting_area = dapi_im.copy()
-    # detecting nucs only in the proximity of the splitting line
-    splitting_area[0:924, 0:924] = 0
-    splitting_area[1124:, 1124:] = 0
-    splitting_area[0:924, 1124:] = 0
-    splitting_area[1124:, 0:924] = 0
-    results = nucModel.detect([splitting_area], verbose=0)
-    r = results[0]
-    m = r['masks']
+def getSplittedNucleiIndices(mask_per_nucleus_in_border):
+    """
+    Detects which nucleus in the DAPI image is overlapping with the quarters borderline
 
-    # detecting which nucleuses are potentially splitted
-    cross = np.zeros((np.shape(m)))
-    cross[1023:1025, :, :] = 1
-    cross[:, 1023:1025, :] = 1
-    multi = np.any(np.logical_and(cross, m), (0, 1))
-    splitted = m[:, :, multi]
-    # changing those splitted nucs to a single nuc
-    for mask_idx in range(np.shape(splitted)[2]):
-        full_nuc_mask = splitted[:, :, mask_idx]
-        unique_nucs = np.unique(nuc_markers_total[full_nuc_mask])
-        num_unique_nucs = len(unique_nucs) if 0 not in unique_nucs else len(unique_nucs) - 1
-        if num_unique_nucs > 1:
-            # removing old nucs if they overlap significantly with the complete nuc
-            min_num = np.inf
-            for nuc in unique_nucs:
-                if nuc == 0:
+    Parameters
+    ----------
+    mask_per_nucleus_in_border: ndarray
+        Array with a 2D binary mask for every individual nucleus detected close to the borderline of the quarters
+
+    Returns
+    -------
+    splitted_nuclei_indices: ndarray
+        1D array with boolean type
+        indicates which of the binary masks in mask_per_nucleus_in_border belongs to a nucleus that is splitted in the
+        segmentation results of segmentNucleiByQuarters (might be splitted into multiple nuclei)
+    """
+    # initialize a binary 2D array with the same size as the DAPI image with ones on the borderline
+    borderline = np.zeros((2048, 2048))
+    borderline[1023:1025, :] = 1
+    borderline[:, 1023:1025] = 1
+    splitted_nuclei_indices = []
+    # iterate other every mask of a detected nucleus in the proximity of the borderline and check if it overlaps
+    # with the borderline
+    for i in range(np.shape(mask_per_nucleus_in_border)[2]):
+        if np.any(np.logical_and(borderline, mask_per_nucleus_in_border[:, :, i])):
+          splitted_nuclei_indices.append(True)
+        else:
+          splitted_nuclei_indices.append(False)
+    splitted_nuclei_indices = np.array(splitted_nuclei_indices)
+    return splitted_nuclei_indices
+
+def findSplittedNuclei(dapi_im, nucModel):
+    """
+    Segments nuclei in the image that are close to the quarters borderlines (due to the image being divided to four parts
+    in segmentNucleiByQuarters) and returns the indices of the nuclei that overlap with the borderlines of the quarters
+     and are therefore splitted in the segmentation results of segmentNucleiByQuarters
+
+    Parameters
+    ----------
+    dapi_im: ndarray
+        2D array containing data with float type
+        Single channel grayscale Nuclei(DAPI) image
+
+    nucModel: Instance of class MaskRCNN
+        Mask RCNN model for Nuclei instance segmentation
+
+    Returns
+    -------
+    mask_per_nucleus_in_border: ndarray
+        Array with a 2D binary mask for every individual nucleus detected close to the borderline of the quarters
+    splitted_nuclei_indices: ndarray
+        1D array with boolean type
+        indicates which of the binary masks in mask_per_nucleus_in_border belongs to a nucleus that is splitted in the
+        segmentation results of segmentNucleiByQuarters (might be splitted into multiple nuclei)
+    """
+    # keep only the DAPI image that is in the proximity of the quarters borderlines
+    # (100 pixels to from direction from the middle of the X and Y axis middle)
+    boundary_area = dapi_im.copy()
+    boundary_area[0:924, 0:924] = 0
+    boundary_area[1124:, 1124:] = 0
+    boundary_area[0:924, 1124:] = 0
+    boundary_area[1124:, 0:924] = 0
+    # Segment nuclei in the borderline proximity
+    results = nucModel.detect([boundary_area], verbose=0)
+    mask_per_nucleus_in_border = results[0]['masks']
+    # detecting which nuclei is splitted
+    splitted_nuclei_indices = getSplittedNucleiIndices(mask_per_nucleus_in_border)
+    return mask_per_nucleus_in_border, splitted_nuclei_indices
+
+
+
+def correctSplittedNuclei(mask_per_nucleus_in_border, splitted_nuclei_indices, nuclei_segmentation):
+    """
+    Corrects the instance segmentation based on segmentNucleiByQuarters so that nuclei that were partitioned due to the
+    division to quarters will be correctly label into a single nucleus
+
+    Parameters
+    ----------
+    mask_per_nucleus_in_border: ndarray
+        Array with a 2D binary mask for every individual nucleus detected close to the borderline of the quarters
+    splitted_nuclei_indices: ndarray
+        1D array with boolean type
+        indicates which of the binary masks in mask_per_nucleus_in_border belongs to a nucleus that is splitted in the
+        segmentation results of segmentNucleiByQuarters (might be splitted into multiple nuclei)
+    nuclei_segmentation: ndarray
+        2D array containing data with int type
+        Nuclei instance segmentation results for the entire DAPI image, each integer represents a different nucleus
+
+    Returns
+    -------
+    nuclei_segmentation: ndarray
+        2D array containing data with int type
+        Nuclei instance segmentation results for the entire DAPI image after correction,
+        each integer represents a different nucleus
+
+    """
+    splitted_nuclei_full_masks = mask_per_nucleus_in_border[:, :, splitted_nuclei_indices]
+    for mask_idx in range(np.shape(splitted_nuclei_full_masks)[2]):
+        # for each full nucleus detected in boundry area check to how many different nuclei it was partitioned to in the
+        # nuclei_segmentation from segmentNucleiByQuarters
+        full_nuc_mask = splitted_nuclei_full_masks[:, :, mask_idx]
+        unique_nuclei = np.unique(nuclei_segmentation[full_nuc_mask])
+        # the number of uniquely identified nuclei on the full nuclei area should not include background pixels with
+        # value equal to 0
+        num_unique_nuclei = len(unique_nuclei) if 0 not in unique_nuclei else len(unique_nuclei) - 1
+        # remove partitioned nuclei and replace them with the full nucleus mask.
+        if num_unique_nuclei > 1:
+            min_label = np.inf
+            for nuc_label in unique_nuclei:
+                if nuc_label == 0:  # background is irrelevant
                     continue
-                splitted_mask = nuc_markers_total == nuc
+                splitted_mask = nuclei_segmentation == nuc_label
+                # remove the partitioned nucleus if it overlaps with the full nucleus area
                 overlap = np.sum(np.logical_and(splitted_mask, full_nuc_mask)) / np.sum(splitted_mask)
                 if overlap > 0.5:
-                    nuc_markers_total[splitted_mask] = 0
-                    if nuc < min_num:
-                        min_num = nuc
+                    nuclei_segmentation[splitted_mask] = 0
+                    if nuc_label < min_label:
+                        min_label = nuc_label
+            # assign the full nucleus with the minimal label of its partitioned nuclei that it replaced
+            nuclei_segmentation[full_nuc_mask] = min_label
+    return nuclei_segmentation
 
-            nuc_markers_total[full_nuc_mask] = min_num
 
-    centroids_new = [[0, 0]]
-    # removing nuclueses without 70% overlap with cells foreground
-    nuc_im = np.zeros(np.shape(nuc_markers_total))
-    good_cells_counter = 0
-    # map between values in nuc_markers_total and in nuc_im for splitted cells
-    good_cell_map = {}
-    for nuc_idx in range(1, counter):
-        current_nuc_indices = nuc_markers_total == nuc_idx
-        if not np.any(current_nuc_indices):
+
+
+
+
+def keepViableNuclei(nuclei_segmentation, nuclei_count, cells_foreground_mask):
+    """
+    Check for every nuclei in nuclei instance segmentation mask (nuclei_segmentation) if its viable by checking for
+     overlap with the cell foreground mask
+
+    Parameters
+    ----------
+    nuclei_segmentation:ndarray
+        2D array containing data with int type
+        Nuclei instance segmentation results for the entire DAPI image after correction,
+        each integer represents a different nucleus
+    nuclei_count: int
+        Number of overall nuclei detected in the DAPI image
+    cells_foreground_mask: ndarray
+        2D array containing data with boolean type
+        predicted cell foreground segmentation mask
+
+    Returns
+    -------
+    nuclei_instance_segmentation_mask: ndarray
+        2D array containing data with int type
+        Final nuclei instance segmentation results for the entire DAPI image each integer represents a different nucleus
+    centroids: ndarray
+        array containing data with int type
+        containing [y,x] coordinates of nuclei centers
+    apoptosis_fraction: float
+        fraction of non-viable cells in the field (nuclei that do not overlap with cell foreground)
+    """
+    centroids = [[0, 0]]
+    # todo initialize centroids_new as empty array - this should include changes to other functions
+    #initialize a new 2D array for segmentation results and a counter for viable cells (nuclei that overlap with foreground)
+    nuclei_instance_segmentation_mask = np.zeros(np.shape(nuclei_segmentation))
+    viable_cells_counter = 0
+    # iterate other the possible nuclei labels: 0 is the background label,
+    # and the maximal label possible is the nuclei_count which is the number
+    # of nuclei before correcting partitioned nuclei
+    for nuc_idx in range(1, nuclei_count):
+        current_nuc_indices = nuclei_segmentation == nuc_idx
+        if not np.any(current_nuc_indices):  # it might have been combined with another nucleus in correctSplittedNuclei
             continue
-        overlap_with_foreground = np.mean(segmented_image[current_nuc_indices])
+        overlap_with_foreground = np.mean(cells_foreground_mask[current_nuc_indices])
         if overlap_with_foreground > 0.7:
-            good_cells_counter += 1
-            nuc_im[current_nuc_indices] = good_cells_counter
-            centroids_new.append(list(np.mean(np.where(current_nuc_indices), axis=1)))
-    apoptosis_fraction = 1 - good_cells_counter / counter
+            # If the nucleus overlaps with foreground it is considered viable
+            # and will appear in the instance segmenation results. In addition its pixels mean X,Y coordinates are saved
+            # as its centroids
+            viable_cells_counter += 1
+            nuclei_instance_segmentation_mask[current_nuc_indices] = viable_cells_counter
+            centroids.append(list(np.mean(np.where(current_nuc_indices), axis=1)))
+    #todo denomenator in apoptosis_fraction should be changed to the amount of corrected nuclei after the splitting correction
 
-    return nuc_im, np.array(centroids_new).astype(int), apoptosis_fraction
+    # the fraction of non-viable cells is is denoted as apoptosis_fraction
+    apoptosis_fraction = 1 - viable_cells_counter / nuclei_count
+    centroids = np.array(centroids).astype(int)
+    return nuclei_instance_segmentation_mask, centroids, apoptosis_fraction
+
+
+
+def segmentNuclei(dapi_im, cells_foreground_mask, nucModel):
+    """
+    Performs nuclei instance segmentation by dividing the image to 4 quarters, detecting the nuclei in each one of them,
+    combine the results, correct partitioned nuclei due to the division and keep only the nuclei that are viable,
+    meaning, they overlap with the cell foreground map. allows instance segmentation of about 4000 nuclei instead of
+    1000 without the partition
+
+    Parameters
+    ----------
+    dapi_im: ndarray
+        2D array containing data with float type
+        Single channel grayscale Nuclei(DAPI) image
+    cells_foreground_mask: ndarray
+        2D array containing data with boolean type
+        predicted cell foreground segmentation mask
+    nucModel: Instance of class MaskRCNN
+        Mask RCNN model for Nuclei instance segmentation
+
+    Returns
+    -------
+    nuclei_instance_segmentation_mask: ndarray
+        2D array containing data with int type
+        Final nuclei instance segmentation results for the entire DAPI image each integer represents a different nucleus
+    centroids: ndarray
+        array containing data with int type
+        containing [y,x] coordinates of nuclei centers
+    apoptosis_fraction: float
+        fraction of non-viable cells in the field (nuclei that do not overlap with cell foreground)
+    """
+    # divide the DAPI image into quarters and perform instance segmentation on each of the quarters then
+    # combine the results
+    nuclei_segmentation, nuclei_count = segmentNucleiByQuarters(dapi_im, nucModel)
+    # find nuclei in the proximity of the borderline of the quarters and check which one of them was partitioned
+    # in segmentNucleiByQuarters
+    mask_per_nucleus_in_border, splitted_nuclei_indices = findSplittedNuclei(dapi_im, nucModel)
+    # if partitioned nuclei exist correct their segmentation
+    if len(splitted_nuclei_indices) > 0:
+        nuclei_segmentation = correctSplittedNuclei(mask_per_nucleus_in_border, splitted_nuclei_indices, nuclei_segmentation)
+    # check which of the nuclei is the nucleus of a viable cell by checking overlap with cell foregroung mask
+    nuclei_instance_segmentation_mask, centroids_new, apoptosis_fraction = keepViableNuclei(nuclei_segmentation, nuclei_count, cells_foreground_mask)
+    return nuclei_instance_segmentation_mask, centroids_new, apoptosis_fraction
+
 
 

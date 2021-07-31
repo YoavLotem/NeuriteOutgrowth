@@ -3,6 +3,7 @@ import imgaug.augmentables.segmaps as bla
 from skimage import measure
 import numpy as np
 import os
+
 def Backscatter_flag(dapi):
     #  convert the image to grayscale, and blur it
     gray = cv2.cvtColor(dapi, cv2.COLOR_BGR2GRAY)
