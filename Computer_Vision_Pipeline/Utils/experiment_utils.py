@@ -6,7 +6,7 @@ from skimage import morphology
 from skan import Skeleton, summarize
 from skimage.morphology import watershed
 from Computer_Vision_Pipeline.Utils.utils import save_pickle, append_dict, sort_wells, continueOrNot, byFieldNum
-from Computer_Vision_Pipeline.Utils.Loading_Models import nucModel, neurite_model
+from Computer_Vision_Pipeline.Utils.loading_models import nucModel, neurite_model
 from Computer_Vision_Pipeline.Utils.segmentation_utils import segmentNuclei, segmentNeurites, segmentForeground
 from Computer_Vision_Pipeline.Utils.image_utils import Backscatter_flag
 from Computer_Vision_Pipeline.Utils.graph_representation_utils import create_graph

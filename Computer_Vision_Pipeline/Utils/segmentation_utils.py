@@ -1,3 +1,4 @@
+from Computer_Vision_Pipeline.common import IMAGE_WIDTH, IMAGE_HEIGHT, IMAGE_SHAPE
 from sklearn.mixture import GaussianMixture
 import cv2
 import numpy as np
@@ -29,7 +30,7 @@ def applyPostProcessing(binary_prd, thr=100):
     nb_components = nb_components - 1
 
     # initializing a new binary prediction array and inserting it with the connected components larger than threshold
-    new_binary_prd = np.zeros((2048, 2048))
+    new_binary_prd = np.zeros(IMAGE_SHAPE)
     for i in range(0, nb_components):
         if sizes[i] >= thr:
             new_binary_prd[output == i + 1] = 1
@@ -110,7 +111,7 @@ def segmentForeground(morphology_image):
     """
 
     # down sample the image for better performance
-    down_sampled_morphology_image = cv2.resize(morphology_image, (512, 512), interpolation=cv2.INTER_AREA)
+    down_sampled_morphology_image = cv2.resize(morphology_image, (IMAGE_HEIGHT/4, IMAGE_WIDTH/4), interpolation=cv2.INTER_AREA)
     # fit a Gaussian mixture model with 2 components
     gmm_classifier = GaussianMixture(n_components=2)
     gmm_classifier.fit(down_sampled_morphology_image.reshape((down_sampled_morphology_image.size, 1)))
@@ -148,23 +149,23 @@ def segmentNucleiByQuarters(dapi_im, nucModel):
 
     # Initialize an image to aggregate the instance segmentation from all 4 quarters and a global
     # nuclei_count to keep track of individual nuclei numbers
-    nuclei_segmentation = np.zeros((2048, 2048))
+    nuclei_segmentation = np.zeros(IMAGE_SHAPE)
     nuclei_count = 1
     for i in range(2):
         for j in range(2):
             # detect the nuclei in a quarter of the image
-            quarter_dapi = dapi_im[i * 1024:(i + 1) * 1024, j * 1024:(j + 1) * 1024, :]
+            quarter_dapi = dapi_im[i * (IMAGE_HEIGHT/2): (i + 1) * (IMAGE_HEIGHT/2), j * (IMAGE_WIDTH/2): (j + 1) * (IMAGE_WIDTH/2), :]
             results = nucModel.detect([quarter_dapi], verbose=0)
             mask_per_nucleus = results[0]['masks']  # a single channel for each detected nuclei with booleans indicating its location
             num_nuclei = np.shape(mask_per_nucleus)[2]
             # aggregate the individual detected instance segmentation masks into a single 2d image
-            nuclei_segmentation_quarter = np.zeros((1024, 1024))
+            nuclei_segmentation_quarter = np.zeros((IMAGE_HEIGHT/2, IMAGE_WIDTH/2))
             for idx in range(num_nuclei):
                 mask = mask_per_nucleus[:, :, idx]
                 nuclei_segmentation_quarter[mask] = nuclei_count
                 nuclei_count += 1
             # insert the instance segmentation result of a quarter image in the total image results
-            nuclei_segmentation[i * 1024:(i + 1) * 1024, j * 1024:(j + 1) * 1024] = nuclei_segmentation_quarter
+            nuclei_segmentation[i * (IMAGE_HEIGHT/2): (i + 1) * (IMAGE_HEIGHT/2), j * (IMAGE_WIDTH/2): (j + 1) * (IMAGE_WIDTH/2)] = nuclei_segmentation_quarter
     return nuclei_segmentation, nuclei_count
 
 def getSplittedNucleiIndices(mask_per_nucleus_in_border):
@@ -184,9 +185,9 @@ def getSplittedNucleiIndices(mask_per_nucleus_in_border):
         segmentation results of segmentNucleiByQuarters (might be splitted into multiple nuclei)
     """
     # initialize a binary 2D array with the same size as the DAPI image with ones on the borderline
-    borderline = np.zeros((2048, 2048))
-    borderline[1023:1025, :] = 1
-    borderline[:, 1023:1025] = 1
+    borderline = np.zeros(IMAGE_SHAPE)
+    borderline[(IMAGE_HEIGHT/2)-1: (IMAGE_HEIGHT/2)+1, :] = 1
+    borderline[:, (IMAGE_WIDTH/2)-1: (IMAGE_WIDTH/2)+1] = 1
     splitted_nuclei_indices = []
     # iterate other every mask of a detected nucleus in the proximity of the borderline and check if it overlaps
     # with the borderline
@@ -225,10 +226,10 @@ def findSplittedNuclei(dapi_im, nucModel):
     # keep only the DAPI image that is in the proximity of the quarters borderlines
     # (100 pixels to from direction from the middle of the X and Y axis middle)
     boundary_area = dapi_im.copy()
-    boundary_area[0:924, 0:924] = 0
-    boundary_area[1124:, 1124:] = 0
-    boundary_area[0:924, 1124:] = 0
-    boundary_area[1124:, 0:924] = 0
+    boundary_area[0: (IMAGE_HEIGHT/2)-100, 0: (IMAGE_WIDTH/2)-100] = 0
+    boundary_area[0: (IMAGE_HEIGHT/2)-100, (IMAGE_WIDTH/2)+100:] = 0
+    boundary_area[(IMAGE_HEIGHT/2)+100:, (IMAGE_WIDTH/2)+100:] = 0
+    boundary_area[(IMAGE_HEIGHT/2)+100:, 0: (IMAGE_WIDTH/2)-100] = 0
     # Segment nuclei in the borderline proximity
     results = nucModel.detect([boundary_area], verbose=0)
     mask_per_nucleus_in_border = results[0]['masks']

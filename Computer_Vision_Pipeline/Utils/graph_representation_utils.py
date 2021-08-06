@@ -1,20 +1,49 @@
+from Computer_Vision_Pipeline.common import IMAGE_WIDTH, RADIUS, DISK_MASK, SEARCH_MASK
 import numpy as np
 
+def placeSearchDisk(neurite_endpoint, SEARCH_MASK, DISK_MASK):
+    """
+    Places the DISK_MASK in the right place in the SEARCH_MASK, that is intended to search for cells in the proximity
+    of a neurite endpint, so that the center of the search disk will be at the neurite endpoint.
+    This approach to set the SEARCH_MASK using the precomputed DISK_MASK is significantly faster than the naive approach
 
-def create_circular_mask(center, mask, tiny_mask, radius):
-    radiusplusone = radius + 1
-    left = max(center[0] - radiusplusone, 0)
-    right = min(center[0] + radiusplusone, 2047)
+    Parameters
+    ----------
+    neurite_endpoint: tuple
+        (x,y) coordinates of the neurite endpoint
+    SEARCH_MASK: ndarray
+        2D array containing data with boolean type
+        has the same size as the morphology image and searches for cells in the neurite endpoint proximity
+    DISK_MASK: ndarray
+        2D array containing data with boolean type
+        a square mask containing the RADIUS sized search disk
 
-    down = max(center[1] - radiusplusone, 0)
-    up = min(center[1] + radiusplusone, 2047)
+    Returns
+    -------
+    SEARCH_MASK:ndarray
+        2D array containing data with boolean type
+        has the same size as the morphology image and searches for cells in the neurite endpoint proximity
+        contains a search disk to search for cells surrounding the neurite_endpoint.
 
-    tiny_left = max(radiusplusone - (center[0] - left), 0)
-    tiny_right = min(right - center[0] + radiusplusone, radiusplusone * 2)
-    tiny_down = max(radiusplusone - (center[1] - down), 0)
-    tiny_up = min(up - center[1] + radiusplusone, radiusplusone * 2)
-    mask[down: up, left: right] = tiny_mask[tiny_down: tiny_up, tiny_left: tiny_right]
-    return mask, down, up, left, right
+    """
+
+    # set up the correct position to place the square mask containing the search disk (if the neurite endpoint is close
+    # to one of the image edges the mask will be trimmed because we can't search outside of the image)
+
+    left = max(neurite_endpoint[0] - (RADIUS + 1), 0)
+    right = min(neurite_endpoint[0] + (RADIUS + 1), IMAGE_WIDTH - 1)
+    down = max(neurite_endpoint[1] - (RADIUS + 1), 0)
+    up = min(neurite_endpoint[1] + (RADIUS + 1), IMAGE_WIDTH - 1)
+
+    # calculate how much of the DISK_MASK do we need in case the endpoint is close to the edge
+    disc_left = max((RADIUS + 1) - (neurite_endpoint[0] - left), 0)
+    disc_right = min(right - neurite_endpoint[0] + (RADIUS + 1), (RADIUS + 1) * 2)
+    disc_down = max((RADIUS + 1) - (neurite_endpoint[1] - down), 0)
+    disc_up = min(up - neurite_endpoint[1] + (RADIUS + 1), (RADIUS + 1) * 2)
+
+    # place the DISK_MASK with the correct coordinate in the SEARCH_MASK in the correct position
+    SEARCH_MASK[down: up, left: right] = DISK_MASK[disc_down: disc_up, disc_left: disc_right]
+    return SEARCH_MASK
 
 
 def nuc_dist(centroids, first_idx, second_idx):
@@ -39,14 +68,8 @@ def create_edges(touching_cells, centroids):
 def create_graph(G, seg, branch_data, centroids):
     branch_data = branch_data.rename(columns={name: name.replace('-', '_') for name in branch_data.columns})
     branch_data = branch_data.sort_values(by=['skeleton_id'])
-    unique_skeletons = branch_data['skeleton_id'].unique()
     field_dict = {cell_num: 0 for cell_num in range(1, np.max(seg) + 1)}
 
-    circle_mask = np.full((2048, 2048), False)
-    radius = 15
-    rectangle_edge_length = (radius + 1) * 2 + 1
-    circle_y, circle_x = np.ogrid[: rectangle_edge_length, : rectangle_edge_length]
-    tiny_mask = (circle_x - (radius + 1)) ** 2 + (circle_y - (radius + 1)) ** 2 <= radius ** 2
 
     df_grouped_by_id = branch_data.groupby(['skeleton_id'])
     neurite_length_by_skeleton_id = df_grouped_by_id['branch_distance'].sum()
@@ -70,9 +93,8 @@ def create_graph(G, seg, branch_data, centroids):
         end_point_y = branch.image_coord_dst_0
         end_point_x = branch.image_coord_dst_1
         center = (int(end_point_x), int(end_point_y))
-        circle_mask, down, up, left, right = create_circular_mask(center, circle_mask, tiny_mask, radius)
+        circle_mask = placeSearchDisk(center, SEARCH_MASK, DISK_MASK)
         cells_close_to_endpoint, counts = np.unique(seg[circle_mask], return_counts=True)
-        circle_mask[down: up, left: right] = False
         not_background = cells_close_to_endpoint != 0
         if np.sum(not_background) == 0:
             continue
