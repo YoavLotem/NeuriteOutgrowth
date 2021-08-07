@@ -9,7 +9,7 @@ from Computer_Vision_Pipeline.Utils.utils import save_pickle, append_dict, sort_
 from Computer_Vision_Pipeline.Utils.loading_models import nucModel, neurite_model
 from Computer_Vision_Pipeline.Utils.segmentation_utils import segmentNuclei, segmentNeurites, segmentForeground
 from Computer_Vision_Pipeline.Utils.image_utils import Backscatter_flag
-from Computer_Vision_Pipeline.Utils.graph_representation_utils import create_graph
+from Computer_Vision_Pipeline.Utils.graph_representation_utils import createGraph
 
 def single_field_procedure(folder, image_name):
     G = nx.Graph()
@@ -35,7 +35,7 @@ def single_field_procedure(folder, image_name):
                 "Neurite Distribution": neurite_dist}
         return G, nodes_list, data
     branch_data = summarize(Skeleton(skeleton0))
-    G, field_dict = create_graph(G, seg, branch_data, centroids)
+    G, field_dict = createGraph(G, seg, branch_data, centroids)
     num_nucs = len(field_dict)
     data = {"Cell Number": float(num_nucs), "Neurite pixels": float(neurite_sum),
             "Apoptosis Fraction": apoptosis_fraction, "Backscatter": float(Backscatter),
