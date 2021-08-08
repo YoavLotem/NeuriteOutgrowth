@@ -3,26 +3,65 @@ import os
 import json
 import ast
 
-def byFieldNum(elem):
+# sorting of images assumes the following structure:
+# B - 02(fld 01 wv FITC - FITC).tif
+# when:
+# B is a the character that represents the row in which the well is in (see plate illustration)
+# 02 is the number that represents the the columns in which the well is in (see plate illustration)
+# 01 is the field of view (multi channel image) number
+######################################################
+#       Plate illustration
+#   01 02 03 04 05 06 07 08 09 10 11 12
+# A  *  *  *  *  *  *  *  *  *  *  *  *
+# B  *  *  *  *  *  *  *  *  *  *  *  *
+# C  *  *  *  *  *  *  *  *  *  *  *  *
+# D  *  *  *  *  *  *  *  *  *  *  *  *
+##########################################################
+
+# The following 3 functions are used as keys to sort through images
+
+
+def byFieldNumber(elem):
     return int(elem[11:13])
 
-def byLetter(elem):
+
+def byRowCharacter(elem):
     return elem[0]
 
-def byNum(elem):
+
+def byColumnNumber(elem):
     return int(elem[4:])
 
-def sort_wells(wNames):
-    L = len(wNames)
-    letters = list(set([s[0] for s in wNames]))
-    letters.sort(key=byLetter)
-    wNames_new = []
-    for let in letters:
-        let_wells = [s for s in wNames if let in s]
-        let_wells.sort(key=byNum)
-        for well in let_wells:
-            wNames_new.append(well)
-    return wNames_new
+
+def sortWells(well_names):
+    """
+    Sorts a list of well names of the form: "B - 02"
+    according to their: 1) row character and 2) column number
+    for example: sortWells([C - 02, B - 02, B - 05]) -> [B - 02, B - 05, C - 02]
+
+    Parameters
+    ----------
+    well_names: list
+        list of well names of the form: "B - 02"
+
+    Returns
+    -------
+    A sorted list of well names
+    """
+    # get a list of unique row characters and sort them by characters (A<B)
+    row_characters = list(set([name[0] for name in well_names]))
+    row_characters.sort(key=byRowCharacter)
+    sorted_well_names = []
+    # iterate other the sorted unique row characters
+    for row_char in row_characters:
+        # find every well name with the row character and sort them by column number (1<2)
+        same_row_wells = [name for name in well_names if row_char in name]
+        same_row_wells.sort(key=byColumnNumber)
+        for well in same_row_wells:
+            # insert the well names by the order of 1) row character and 2) column number
+            sorted_well_names.append(well)
+    return sorted_well_names
+
 
 def get_last_well_name(path):
   with open(path, "r") as file:

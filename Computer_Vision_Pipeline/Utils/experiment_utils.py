@@ -5,10 +5,10 @@ import numpy as np
 from skimage import morphology
 from skan import Skeleton, summarize
 from skimage.morphology import watershed
-from Computer_Vision_Pipeline.Utils.utils import save_pickle, append_dict, sort_wells, continueOrNot, byFieldNum
+from Computer_Vision_Pipeline.Utils.utils import save_pickle, append_dict, sortWells, continueOrNot, byFieldNumber
 from Computer_Vision_Pipeline.Utils.loading_models import nucModel, neurite_model
 from Computer_Vision_Pipeline.Utils.segmentation_utils import segmentNuclei, segmentNeurites, segmentForeground
-from Computer_Vision_Pipeline.Utils.image_utils import Backscatter_flag
+from Computer_Vision_Pipeline.Utils.image_utils import quntifyBackscatter
 from Computer_Vision_Pipeline.Utils.graph_representation_utils import createGraph
 
 def single_field_procedure(folder, image_name):
@@ -27,7 +27,7 @@ def single_field_procedure(folder, image_name):
     neu[labels >= 1] = 1
     skeleton0 = morphology.skeletonize(neu)
     neurite_sum = np.sum(skeleton0)
-    Backscatter = Backscatter_flag(dapi_image)
+    Backscatter = quntifyBackscatter(dapi_image)
     if neurite_sum == 0:
         neurite_dist = [0] * len(nodes_list)
         data = {"Cell Number": float(len(nodes_list)), "Neurite pixels": float(neurite_sum),
@@ -45,7 +45,7 @@ def single_field_procedure(folder, image_name):
 def extract_data_from_plate_images(folder, saving_folder, fields_per_well=20):
     saving_path = os.path.join(saving_folder, os.path.basename(os.path.normpath(folder)) + '.txt')
     fNames = [s for s in os.listdir(folder) if 'FITC' in s]
-    wNames = sort_wells(list(set([s[:6] for s in fNames])))
+    wNames = sortWells(list(set([s[:6] for s in fNames])))
     first_iter = True
 
     for well_name in wNames:
@@ -58,7 +58,7 @@ def extract_data_from_plate_images(folder, saving_folder, fields_per_well=20):
                 continue
 
         fNames_temp = [s for s in fNames if well_name in s]
-        fNames_temp.sort(key=byFieldNum)
+        fNames_temp.sort(key=byFieldNumber)
         assert len(fNames_temp) == fields_per_well, 'number of fields in well is not valid'
 
         for image_name in fNames_temp:

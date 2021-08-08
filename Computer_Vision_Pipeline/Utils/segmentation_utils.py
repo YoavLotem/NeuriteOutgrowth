@@ -392,6 +392,8 @@ def segmentNuclei(dapi_im, cells_foreground_mask, nucModel):
         nuclei_segmentation = correctSplittedNuclei(mask_per_nucleus_in_border, splitted_nuclei_indices, nuclei_segmentation)
     # check which of the nuclei is the nucleus of a viable cell by checking overlap with cell foregroung mask
     nuclei_instance_segmentation_mask, centroids_new, apoptosis_fraction = keepViableNuclei(nuclei_segmentation, nuclei_count, cells_foreground_mask)
+
+    # todo should consider removing very large nuclei that are probably a mistake
     return nuclei_instance_segmentation_mask, centroids_new, apoptosis_fraction
 
 
