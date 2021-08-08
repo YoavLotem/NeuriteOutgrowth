@@ -1,7 +1,7 @@
-from Computer_Vision_Pipeline.common import IMAGE_WIDTH, RADIUS, DISK_MASK, SEARCH_MASK
+from Computer_Vision_Pipeline.common import IMAGE_WIDTH, RADIUS, DISK_MASK
 import numpy as np
 
-def placeSearchDisk(neurite_endpoint, SEARCH_MASK, DISK_MASK):
+def placeSearchDisk(neurite_endpoint, search_mask, DISK_MASK):
     """
     Places the DISK_MASK in the right place in the SEARCH_MASK, that is intended to search for cells in the proximity
     of a neurite endpint, so that the center of the search disk will be at the neurite endpoint.
@@ -11,7 +11,7 @@ def placeSearchDisk(neurite_endpoint, SEARCH_MASK, DISK_MASK):
     ----------
     neurite_endpoint: tuple
         (x,y) coordinates of the neurite endpoint
-    SEARCH_MASK: ndarray
+    search_mask: ndarray
         2D array containing data with boolean type
         has the same size as the morphology image and searches for cells in the neurite endpoint proximity
     DISK_MASK: ndarray
@@ -24,7 +24,8 @@ def placeSearchDisk(neurite_endpoint, SEARCH_MASK, DISK_MASK):
         2D array containing data with boolean type
         has the same size as the morphology image and searches for cells in the neurite endpoint proximity
         contains a search disk to search for cells surrounding the neurite_endpoint.
-
+    up, down, right, left: int
+        pixel coordinates where the DISK_MASK was placed
     """
 
     # set up the correct position to place the square mask containing the search disk (if the neurite endpoint is close
@@ -42,8 +43,8 @@ def placeSearchDisk(neurite_endpoint, SEARCH_MASK, DISK_MASK):
     disc_up = min(up - neurite_endpoint[1] + (RADIUS + 1), (RADIUS + 1) * 2)
 
     # place the DISK_MASK with the correct coordinate in the SEARCH_MASK in the correct position
-    SEARCH_MASK[down: up, left: right] = DISK_MASK[disc_down: disc_up, disc_left: disc_right]
-    return SEARCH_MASK
+    search_mask[down: up, left: right] = DISK_MASK[disc_down: disc_up, disc_left: disc_right]
+    return search_mask, down, up, left, right
 
 
 def calcDistance(centroids, first_idx, second_idx):
@@ -101,12 +102,51 @@ def createEdges(connected_by_neurite, centroids):
             edges.append((cell_number, other_cell_number, {'weight': int(distance)}))
     return edges
 
-def searchCellsCloseToEndpoint(branch, SEARCH_MASK, DISK_MASK, seg):
+def searchCellsCloseToEndpoint(branch, search_mask, DISK_MASK, soma_inst_seg_mask):
+    """
+    Identify cells in the proximity of a neurite endpoint
+
+    Parameters
+    ----------
+    branch: namedtuple
+        A namedtuple that contains information of a single branch which is part
+        of a skeletonized connected component of a neurite
+    search_mask: ndarray
+        2D array containing data with boolean type
+        has the same size as the morphology image and searches for cells in the neurite endpoint proximity
+    DISK_MASK: ndarray
+        2D array containing data with boolean type
+        a square mask containing the RADIUS sized search disk
+    soma_inst_seg_mask: ndarray
+        2D array containing data with int type
+        Cell-body instance segmentation mask. Each individual cell has a different integer
+        assigned to the pixels it appears at. Background value is zero.
+
+    Returns
+    -------
+    cells_close_to_endpoint: ndarray
+        1D array containing data with int type
+        contains the identifying numbers of cells that are in the proximity of the neurite endpoint
+    counts: ndarray
+        1D array containing data with int type
+        Contains the amount of pixels that that are in the proximity of the endpoint
+        for each of the cells mentioned in cells_close_to_endpoint.
+        This data helps finding out which cell is connected to the neurite via the current endpoint.
+
+    """
+    # the x,y coordinates of the endpoint of the branch (not the source of the branch)
     end_point_y = branch.image_coord_dst_0
     end_point_x = branch.image_coord_dst_1
     center = (int(end_point_x), int(end_point_y))
-    circle_mask = placeSearchDisk(center, SEARCH_MASK, DISK_MASK)
-    cells_close_to_endpoint, counts = np.unique(seg[circle_mask], return_counts=True)
+    # place the search disk in the right place in the search mask
+    # in order to look for cells in the proximity of the endpoint in a fast way
+    search_mask, down, up, left, right = placeSearchDisk(center, search_mask, DISK_MASK)
+    # look for unique pixel values in the proximity of the endpoint
+    # (each different pixel value in the cell body instance segmentation mask represents a different cell)
+    cells_close_to_endpoint, counts = np.unique(soma_inst_seg_mask[search_mask], return_counts=True)
+    # retrieve search_mask to its original condition (before placeSearchDisk)
+    search_mask[down: up, left: right] = False
+    # keep only the values of cells(remove background values)
     not_background = cells_close_to_endpoint != 0
     cells_close_to_endpoint = cells_close_to_endpoint[not_background]
     counts = counts[not_background]
@@ -114,32 +154,110 @@ def searchCellsCloseToEndpoint(branch, SEARCH_MASK, DISK_MASK, seg):
 
 
 def findCellWithMaxOverlap(cells_close_to_endpoint, counts):
+    """
+    Find the cell with maximal overlap with search disk in the proximity of an endpoint.
+
+    Parameters
+    ----------
+    cells_close_to_endpoint: ndarray
+        1D array containing data with int type
+        contains the identifying numbers of cells that are in the proximity of the neurite endpoint
+    counts: ndarray
+        1D array containing data with int type
+        Contains the amount of pixels that that are in the proximity of the endpoint
+        for each of the cells mentioned in cells_close_to_endpoint.
+        This data helps finding out which cell is connected to the neurite via the current endpoint.
+
+    Returns
+    -------
+    closest_cell: The number of the cell with the maximal overlap with the maximal overlap with search disk in the proximity of an endpoint.
+    """
     max_count = np.argmax(counts)
     closest_cell = cells_close_to_endpoint[max_count]
     return closest_cell
 
 
-def addSkeletonToGraph(graph, neurite_length_by_skeleton_id, connected_by_neurite, field_dict, skeleton_id, centroids):
+def addSkeletonToGraph(graph, neurite_length_by_skeleton_id, connected_by_neurite, neurite_length_dict, skeleton_id, centroids):
+    """
+    Add the edges of cells that are connected via a specific neurite.
+    In addition, the function divides the neurite's length between the cells that are connected by it
+    as an approximation of each cell's neurite outgrowth.
 
+    Parameters
+    ----------
+    graph: Instance of class Graph of NetworkX
+        The graph representation of the cell culture
+    neurite_length_by_skeleton_id: Pandas Series
+        Holds the total length of a each individual skeletonized neurite connected component
+    connected_by_neurite: set
+        A set containing the numbers of cells that are connected via the neurite
+    neurite_length_dict: dict
+        Contains the cell wise neurite length for each cell
+    skeleton_id: int
+        The identifying number of each neurite's skeleton
+    centroids: ndarray
+        array containing data with int type
+        containing [y,x] coordinates of nuclei centers
+
+    Returns
+    -------
+    graph: Instance of class Graph of NetworkX
+        The graph representation of the cell culture after
+         updating it with the information from the current neurite's skeleton
+    neurite_length_dict: dict
+        Contains the cell wise neurite length for each cell after
+         updating it with the information from the current neurite's skeleton
+    """
     neurite_length = int(neurite_length_by_skeleton_id.loc[skeleton_id])
+    # update the graph and cell wise neurite length only if cells are connected to the neurite
     if len(connected_by_neurite) > 0:
-        normalized_neurite_length = neurite_length / len(connected_by_neurite)
+        neurite_length_per_cell = neurite_length / len(connected_by_neurite)
+        # update each cell's neurite length count
         for cell in connected_by_neurite:
-            field_dict[cell] += round(normalized_neurite_length, 2)
+            neurite_length_dict[cell] += round(neurite_length_per_cell, 2)
+        # create edges between each pair of cells that is connected to the neurite
         edges = createEdges(connected_by_neurite, centroids)
         graph.add_edges_from(edges)
-    return graph, field_dict
+    return graph, neurite_length_dict
 
 
-def createGraph(graph, seg, skeleton_branch_data, centroids):
+
+
+def createGraph(graph, soma_inst_seg_mask, skeleton_branch_data, centroids):
+    """
+    Build a graph representation of the cell culture in the field of view of the DAPI & Morphology images.
+
+    Parameters
+    ----------
+    graph: Instance of class Graph of NetworkX
+        The graph representation of the cell culture
+    soma_inst_seg_mask: ndarray
+        2D array containing data with int type
+        Cell-body instance segmentation mask. Each individual cell has a different integer
+        assigned to the pixels it appears at. Background value is zero.
+    skeleton_branch_data: Pandas DataFrame
+        A DataFrame Summarising the information of the skeletons of the neurites
+    centroids: ndarray
+        array containing data with int type
+        containing [y,x] coordinates of nuclei centers
+
+    Returns
+    -------
+    graph: Instance of class Graph of NetworkX
+        The graph representation of the cell culture
+    neurite_length_dict: dict
+        Contains the cell wise neurite length for each cell
+    """
     # change name format to allow for itertuples loop and use of column names as attributes
     skeleton_branch_data = skeleton_branch_data.rename(columns={name: name.replace('-', '_') for name in skeleton_branch_data.columns})
-    # create a dictionary to hold each cell's neurite length pixels (cell wise neurite length)
-    field_dict = {cell_num: 0 for cell_num in range(1, np.max(seg) + 1)}
+    # create a dictionary to hold each cell's neurites length in pixels (cell wise neurite length)
+    neurite_length_dict = {cell_num: 0 for cell_num in range(1, np.max(soma_inst_seg_mask) + 1)}
     # group branches based on skeleton_id
     df_grouped_by_id = skeleton_branch_data.groupby(['skeleton_id'])
     # get the length of each individual neurite (number of pixels of its skeleton)
     neurite_length_by_skeleton_id = df_grouped_by_id['branch_distance'].sum()
+    # initialize a mask to search for cells in the proximity of neurite endpoints
+    search_mask = np.full((2048, 2048), False)
 
     # iterate other all skeletonized connected components
     for skeleton_id, skeleton_data in df_grouped_by_id:
@@ -150,7 +268,7 @@ def createGraph(graph, seg, skeleton_branch_data, centroids):
 
         # iterate other each branch in the skeleton and search for cells in proximity of endpoints
         for branch in skeleton_endpoint_branches.itertuples(index=False):
-            cells_close_to_endpoint, counts = searchCellsCloseToEndpoint(branch, SEARCH_MASK, DISK_MASK, seg)
+            cells_close_to_endpoint, counts = searchCellsCloseToEndpoint(branch, search_mask, DISK_MASK, soma_inst_seg_mask)
             if len(cells_close_to_endpoint) == 0:
                 continue
             # register only one cell per endpoint as connected - the cell with maximal overlap
@@ -159,6 +277,5 @@ def createGraph(graph, seg, skeleton_branch_data, centroids):
 
         # after all the cells connected via the neurite's skeleton are found
         # we can insert the edges between them into the graph
-        graph, field_dict = addSkeletonToGraph(graph, neurite_length_by_skeleton_id, connected_by_neurite, field_dict, skeleton_id, centroids)
-    return graph, field_dict
-
+        graph, neurite_length_dict = addSkeletonToGraph(graph, neurite_length_by_skeleton_id, connected_by_neurite, neurite_length_dict, skeleton_id, centroids)
+    return graph, neurite_length_dict
