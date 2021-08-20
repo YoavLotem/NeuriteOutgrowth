@@ -230,7 +230,7 @@ def createGraph(graph, soma_inst_seg_mask, skeleton_branch_data, centroids):
     Parameters
     ----------
     graph: Instance of class Graph of NetworkX
-        The graph representation of the cell culture
+        The graph representation of the cell culture in the field.
     soma_inst_seg_mask: ndarray
         2D array containing data with int type
         Cell-body instance segmentation mask. Each individual cell has a different integer
