@@ -1,128 +1,8 @@
 from Computer_Vision_Pipeline.common import IMAGE_WIDTH, IMAGE_HEIGHT, IMAGE_SHAPE
-from sklearn.mixture import GaussianMixture
-import cv2
 import numpy as np
 
-def applyPostProcessing(binary_prd, thr=100):
-    """
-    Performs post-processing on a binary segmentation prediction by
-    removing connected components whose size [pixels] is smaller than a provided threshold
 
-    Parameters
-    ----------
-    binary_prd: ndarray
-        2D array containing data with boolean type
-        Binary segmentation prediction before pre-processing
-    thr: int or float
-        Indicates the minimum size of a connected component that will remain
-
-    Returns
-    -------
-    new_binary_prd: ndarray
-        2D array containing data with boolean type
-        Binary segmentation prediction after removing connected components smaller than threshold
-    """
-
-    # extract the connected components in the image and their respective statistics
-    # the first component is the background so we remove it
-    nb_components, output, stats, _ = cv2.connectedComponentsWithStats(binary_prd.astype('uint8'), connectivity=8)
-    sizes = stats[1:, -1]
-    nb_components = nb_components - 1
-
-    # initializing a new binary prediction array and inserting it with the connected components larger than threshold
-    new_binary_prd = np.zeros(IMAGE_SHAPE)
-    for i in range(0, nb_components):
-        if sizes[i] >= thr:
-            new_binary_prd[output == i + 1] = 1
-    return new_binary_prd
-
-def applyPreProcesing(morphology_image):
-    """
-    Applies pre-processing to the input morphology image(FITC) prior to inference using the neurite segmentation model
-
-    Parameters
-    ----------
-    morphology_image: ndarray
-        2D array containing data with float type
-        Single channel grayscale morphology image
-
-    Returns
-    -------
-    X: ndarray
-        4D array containing data with float type
-        Input image after pre-processing
-    """
-    # applying Contrast Limited Adaptive Histogram Equalization (CLAHE) to improve contrast
-    # than the same pre-processing procedure as in training: subtracting the mean and dividing by 255
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    morphology_image = clahe.apply(morphology_image)
-    morphology_image = morphology_image - np.mean(morphology_image)
-    morphology_image = morphology_image / 255
-    # adding more channels to turn image into a "batch" for deep learning model
-    X = morphology_image[np.newaxis, :, :, np.newaxis]
-    return X
-
-def segmentNeurites(morphology_image, neurite_model):
-    """
-    Predicts a semantic segmentation mask of neurite's pixels in the
-    input morphology image using the neurite segmentation model.
-
-    Parameters
-    ----------
-    morphology_image: ndarray
-        2D array containing data with float type
-        Single channel grayscale morphology image
-    neurite_model: Keras model
-        CNN for neurite semantic segmentation
-
-    Returns
-    -------
-    segmentation_result: ndarray
-        2D array containing data with boolean type
-        predicted neurite segmentation mask
-
-    """
-
-    X = applyPreProcesing(morphology_image)
-
-    # using the neurite segmentation model for predicting the neurites pixels (probability for each pixel),
-    # thresholding the probability map at 0.5 and applying post-processing
-    prd = neurite_model.predict(X, steps=1)
-    binary_prd = prd[0, :, :, 0] > 0.5
-    segmentation_result = applyPostProcessing(binary_prd)
-    return segmentation_result
-
-def segmentForeground(morphology_image):
-    """
-    Predicts a semantic segmentation mask of the cells forground using a threshold selected as
-    the mean of two Gaussian Mixture compopnents fitted to the background and foreground pixels intensity respectively.
-
-    Parameters
-    ----------
-    morphology_image: ndarray
-        2D array containing data with float type
-        Single channel grayscale morphology image
-
-    Returns
-    -------
-    segmentation_result: ndarray
-        2D array containing data with boolean type
-        predicted cell foreground segmentation mask
-    """
-
-    # down sample the image for better performance
-    down_sampled_morphology_image = cv2.resize(morphology_image, (IMAGE_HEIGHT/4, IMAGE_WIDTH/4), interpolation=cv2.INTER_AREA)
-    # fit a Gaussian mixture model with 2 components
-    gmm_classifier = GaussianMixture(n_components=2)
-    gmm_classifier.fit(down_sampled_morphology_image.reshape((down_sampled_morphology_image.size, 1)))
-    # set the threshold as the average of the connected components' means
-    threshold = np.mean(gmm_classifier.means_)
-    # A pixel is considered a foreground pixel if its intensity is higher than threshold
-    segmentation_result = morphology_image > threshold
-    return segmentation_result
-
-
-def segmentNucleiByQuarters(dapi_im, nucModel):
+def segment_nuclei_by_quarters(dapi_im, nucModel):
     """
     Performs Nuclei instance segmentation to the DAPI image by dividing it to 4 quarters
     and performing instance segmentation to each quarter seperately, then combining the results.
@@ -168,7 +48,8 @@ def segmentNucleiByQuarters(dapi_im, nucModel):
             nuclei_segmentation[i * (IMAGE_HEIGHT/2): (i + 1) * (IMAGE_HEIGHT/2), j * (IMAGE_WIDTH/2): (j + 1) * (IMAGE_WIDTH/2)] = nuclei_segmentation_quarter
     return nuclei_segmentation, nuclei_count
 
-def getSplittedNucleiIndices(mask_per_nucleus_in_border):
+
+def get_splitted_nuclei_indices(mask_per_nucleus_in_border):
     """
     Detects which nucleus in the DAPI image is overlapping with the quarters borderline
 
@@ -199,7 +80,8 @@ def getSplittedNucleiIndices(mask_per_nucleus_in_border):
     splitted_nuclei_indices = np.array(splitted_nuclei_indices)
     return splitted_nuclei_indices
 
-def findSplittedNuclei(dapi_im, nucModel):
+
+def find_splitted_nuclei(dapi_im, nucModel):
     """
     Segments nuclei in the image that are close to the quarters borderlines (due to the image being divided to four parts
     in segmentNucleiByQuarters) and returns the indices of the nuclei that overlap with the borderlines of the quarters
@@ -234,12 +116,11 @@ def findSplittedNuclei(dapi_im, nucModel):
     results = nucModel.detect([boundary_area], verbose=0)
     mask_per_nucleus_in_border = results[0]['masks']
     # detecting which nuclei is splitted
-    splitted_nuclei_indices = getSplittedNucleiIndices(mask_per_nucleus_in_border)
+    splitted_nuclei_indices = get_splitted_nuclei_indices(mask_per_nucleus_in_border)
     return mask_per_nucleus_in_border, splitted_nuclei_indices
 
 
-
-def correctSplittedNuclei(mask_per_nucleus_in_border, splitted_nuclei_indices, nuclei_segmentation):
+def correct_splitted_nuclei(mask_per_nucleus_in_border, splitted_nuclei_indices, nuclei_segmentation):
     """
     Corrects the instance segmentation based on segmentNucleiByQuarters so that nuclei that were partitioned due to the
     division to quarters will be correctly label into a single nucleus
@@ -291,11 +172,7 @@ def correctSplittedNuclei(mask_per_nucleus_in_border, splitted_nuclei_indices, n
     return nuclei_segmentation
 
 
-
-
-
-
-def keepViableNuclei(nuclei_segmentation, nuclei_count, cells_foreground_mask):
+def keep_viable_nuclei(nuclei_segmentation, nuclei_count, cells_foreground_mask):
     """
     Check for every nuclei in nuclei instance segmentation mask (nuclei_segmentation) if its viable by checking for
      overlap with the cell foreground mask
@@ -351,13 +228,12 @@ def keepViableNuclei(nuclei_segmentation, nuclei_count, cells_foreground_mask):
     return nuclei_instance_segmentation_mask, centroids, apoptosis_fraction
 
 
-
-def segmentNuclei(dapi_im, cells_foreground_mask, nucModel):
+def segment_nuclei(dapi_im, cells_foreground_mask, nucModel):
     """
     Performs nuclei instance segmentation by dividing the image to 4 quarters, detecting the nuclei in each one of them,
-    combine the results, correct partitioned nuclei due to the division and keep only the nuclei that are viable,
+    combining the results, correcting partitioned nuclei due to the division and keeping only the nuclei that are viable,
     meaning, they overlap with the cell foreground map. allows instance segmentation of about 4000 nuclei instead of
-    1000 without the partition
+    1000 without the partition.
 
     Parameters
     ----------
@@ -383,15 +259,15 @@ def segmentNuclei(dapi_im, cells_foreground_mask, nucModel):
     """
     # divide the DAPI image into quarters and perform instance segmentation on each of the quarters then
     # combine the results
-    nuclei_segmentation, nuclei_count = segmentNucleiByQuarters(dapi_im, nucModel)
+    nuclei_segmentation, nuclei_count = segment_nuclei_by_quarters(dapi_im, nucModel)
     # find nuclei in the proximity of the borderline of the quarters and check which one of them was partitioned
     # in segmentNucleiByQuarters
-    mask_per_nucleus_in_border, splitted_nuclei_indices = findSplittedNuclei(dapi_im, nucModel)
+    mask_per_nucleus_in_border, splitted_nuclei_indices = find_splitted_nuclei(dapi_im, nucModel)
     # if partitioned nuclei exist correct their segmentation
     if len(splitted_nuclei_indices) > 0:
-        nuclei_segmentation = correctSplittedNuclei(mask_per_nucleus_in_border, splitted_nuclei_indices, nuclei_segmentation)
+        nuclei_segmentation = correct_splitted_nuclei(mask_per_nucleus_in_border, splitted_nuclei_indices, nuclei_segmentation)
     # check which of the nuclei is the nucleus of a viable cell by checking overlap with cell foregroung mask
-    nuclei_instance_segmentation_mask, centroids_new, apoptosis_fraction = keepViableNuclei(nuclei_segmentation, nuclei_count, cells_foreground_mask)
+    nuclei_instance_segmentation_mask, centroids_new, apoptosis_fraction = keep_viable_nuclei(nuclei_segmentation, nuclei_count, cells_foreground_mask)
 
     # todo should consider removing very large nuclei that are probably a mistake
     return nuclei_instance_segmentation_mask, centroids_new, apoptosis_fraction

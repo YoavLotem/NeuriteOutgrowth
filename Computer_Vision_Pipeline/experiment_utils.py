@@ -5,11 +5,12 @@ import numpy as np
 from skimage import morphology
 from skan import Skeleton, summarize
 from skimage.morphology import watershed
-from Computer_Vision_Pipeline.Utils.utils import save_pickle, append_dict, sortWells, isSaved, byFieldNumber
-from Computer_Vision_Pipeline.Utils.loading_models import nucModel, neurite_model
-from Computer_Vision_Pipeline.Utils.segmentation_utils import segmentNuclei, segmentNeurites, segmentForeground
-from Computer_Vision_Pipeline.Utils.image_utils import quntifyBackscatter
-from Computer_Vision_Pipeline.Utils.graph_representation_utils import createGraph
+from Computer_Vision_Pipeline.utils import save_pickle, append_dict, sortWells, isSaved, byFieldNumber
+from Computer_Vision_Pipeline.loading_models import nucModel, neurite_model
+from Computer_Vision_Pipeline.nuclei_instance_segmentation import segment_nuclei, segmentForeground
+from Computer_Vision_Pipeline.neurite_semantic_segmentation import segment_neurites
+from Computer_Vision_Pipeline.image_utils import quntifyBackscatter
+from Computer_Vision_Pipeline.graph_representation_utils import createGraph
 
 
 def single_field_procedure(folder, fitc_image_name):
@@ -43,10 +44,10 @@ def single_field_procedure(folder, fitc_image_name):
 
     # perform nuclei instance segmentation and extract each individual nucleus' pixels location,
     # center location and fraction of dead cells
-    nuclei_instance_segmentation_mask, centroids, apoptosis_fraction = segmentNuclei(dapi_image, cells_foreground_mask, nucModel)
+    nuclei_instance_segmentation_mask, centroids, apoptosis_fraction = segment_nuclei(dapi_image, cells_foreground_mask, nucModel)
 
     # perform neurite semantic segmentation - which pixels in the FITC image belongs to a neurite
-    neurite_mask = segmentNeurites(fitc_image, neurite_model)
+    neurite_mask = segment_neurites(fitc_image, neurite_model)
 
     # apply the watershed algorithm to achieve cell instance segmentation
     cell_instance_segmentation_mask = watershed(-1*fitc_image, markers=nuclei_instance_segmentation_mask, watershed_line=True, mask=cells_foreground_mask)
@@ -88,32 +89,68 @@ def single_field_procedure(folder, fitc_image_name):
 
 
 def extract_data_from_plate_images(folder, saving_folder, fields_per_well=20):
-    saving_path = os.path.join(saving_folder, os.path.basename(os.path.normpath(folder)) + '.txt')
-    fNames = [s for s in os.listdir(folder) if 'FITC' in s]
-    wNames = sortWells(list(set([s[:6] for s in fNames])))
+    """
+    Extracts and saves neurite outgrowth features from all the images in a folder that
+    contain images from a single plate.
+
+    Parameters
+    ----------
+    folder: str
+        Path to a folder that contains all the plate's images
+    saving_folder: str
+        Path specifying where to save the results
+    fields_per_well: int, default=20
+        Number of fields in each well.
+
+    """
+    # create a path to save a txt file that will hold (most of) the extracted plate data
+    txt_saving_path = os.path.join(saving_folder, os.path.basename(os.path.normpath(folder)) + '.txt')
+
+    # create a list of the FITC images in the plate each represents a different field of view
+    field_names = [s for s in os.listdir(folder) if 'FITC' in s]
+
+    # create a list of the unique well names in the plate, sorted by row and column
+    unique_well_names = sortWells(list(set([s[:6] for s in field_names])))
+
+    # initiate a boolean to indicate that no information has yet to be saved in this run
+    # allows running multiple times and pick up the run from the last saved well
     first_iter = True
 
-    for well_name in wNames:
-        well_data = {well_name: {"Cell Number": [], "Neurite pixels": [], "Apoptosis Fraction": [], "Backscatter": [],
-                                 "Neurite Distribution": []}}
-        graph_embedding = {well_name: []}
+    for well_name in unique_well_names:
+        # initiate dictionaries to hold the information of each well
+        well_data = {well_name: {"Cell Number": [], "Neurite pixels": [], "Apoptosis Fraction": [], "Backscatter": [], "Neurite Distribution": []}}
+        graph_representation_dictionary = {well_name: []}
+        # a path to save the graph embeddings as a pickle file
         pkl_saving_path = os.path.join(saving_folder, well_name)
-        if os.path.isfile(saving_path) and first_iter:
-            if isSaved(saving_path, well_name):
+
+        # in case this isnt the first run (last run was partial), the following conditions allows us to return to
+        # the last well that did not finish its calculations (extracted data wasn't saved)
+
+        # if a txt file exists and first_iter==True -> not the first call to function
+        if os.path.isfile(txt_saving_path) and first_iter:
+            # check whether the current well was already processed and its information was saved in a previous run
+            if isSaved(txt_saving_path, well_name):
                 continue
 
-        fNames_temp = [s for s in fNames if well_name in s]
-        fNames_temp.sort(key=byFieldNumber)
-        assert len(fNames_temp) == fields_per_well, 'number of fields in well is not valid'
+        # create a list of the currently processed well fields (FITC images names) and sort them by field number
+        fields_of_current_well = [s for s in field_names if well_name in s]
+        fields_of_current_well.sort(key=byFieldNumber)
 
-        for image_name in fNames_temp:
-            field_G, nodes_list, data = single_field_procedure(folder, image_name)
-            graph_embedding[well_name].append([field_G, nodes_list])
-            for name in list(well_data[well_name].keys()):
-                well_data[well_name][name].append(data[name])
+        # make sure the well has the specified number of fields for each well
+        assert len(fields_of_current_well) == fields_per_well, 'Number of fields in well ' + well_name + ' is ' + str(len(fields_of_current_well)) + " (should have been " + str(fields_per_well) + ")"
 
-            print(image_name, ' ', data["Cell Number"])
+        for fitc_image_name in fields_of_current_well:
+            # extract neurite outgrowth information from each field of view
+            graph, nodes_list, data = single_field_procedure(folder, fitc_image_name)
+            graph_representation_dictionary[well_name].append([graph, nodes_list])
+            for key in list(well_data[well_name].keys()):
+                well_data[well_name][key].append(data[key])
 
-        append_dict(well_data, saving_path)
-        save_pickle(pkl_saving_path, graph_embedding)
+        # save the well-level information:
+        # 1) add the well data to the plate txt file
+        # 2) graph representations of the well as pickle files
+        append_dict(well_data, txt_saving_path)
+        save_pickle(pkl_saving_path, graph_representation_dictionary)
         first_iter = False
+
+

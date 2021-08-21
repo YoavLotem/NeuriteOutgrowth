@@ -1,4 +1,4 @@
-from Computer_Vision_Pipeline.Utils.models_utils import *
+from Computer_Vision_Pipeline.models_utils import *
 import Computer_Vision_Pipeline.Mask_RCNN.model as modellib
 from keras.models import load_model
 from keras.models import Model

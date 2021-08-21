@@ -47,7 +47,9 @@ def sortWells(well_names):
 
     Returns
     -------
-    A sorted list of well names
+    sorted_well_names: list
+        A sorted list of well names
+
     """
     # get a list of unique row characters and sort them by characters (A<B)
     row_characters = list(set([name[0] for name in well_names]))
