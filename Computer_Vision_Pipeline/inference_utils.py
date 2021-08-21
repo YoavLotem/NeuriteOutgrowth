@@ -6,11 +6,11 @@ from skimage import morphology
 from skan import Skeleton, summarize
 from skimage.morphology import watershed
 from Computer_Vision_Pipeline.utils import save_pickle, append_dict, sortWells, isSaved, byFieldNumber
-from Computer_Vision_Pipeline.loading_models import nucModel, neurite_model
-from Computer_Vision_Pipeline.nuclei_instance_segmentation import segment_nuclei, segmentForeground
-from Computer_Vision_Pipeline.neurite_semantic_segmentation import segment_neurites
-from Computer_Vision_Pipeline.image_utils import quntifyBackscatter
-from Computer_Vision_Pipeline.graph_representation_utils import createGraph
+from Computer_Vision_Pipeline.Models.load_models import nucModel, neurite_model
+from Computer_Vision_Pipeline.Segmentation.nuclei_instance_segmentation import segment_nuclei, segmentForeground
+from Computer_Vision_Pipeline.Segmentation.neurite_semantic_segmentation import segment_neurites
+from Computer_Vision_Pipeline.Segmentation.backscatter import quntifyBackscatter
+from Computer_Vision_Pipeline.Graph.graph_representation import create_graph
 
 
 def single_field_procedure(folder, fitc_image_name):
@@ -78,7 +78,7 @@ def single_field_procedure(folder, fitc_image_name):
     skeleton_branch_data = summarize(Skeleton(skeletonized_neurite_mask))
 
     # create a graph representation of the cells and extract a cell wise neurite length dictionary
-    graph, neurite_length_dict = createGraph(graph, cell_instance_segmentation_mask, skeleton_branch_data, centroids)
+    graph, neurite_length_dict = create_graph(graph, cell_instance_segmentation_mask, skeleton_branch_data, centroids)
 
     # return all the extracted information
     number_of_cells = len(neurite_length_dict)

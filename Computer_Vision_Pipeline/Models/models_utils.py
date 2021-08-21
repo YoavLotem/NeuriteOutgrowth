@@ -3,7 +3,7 @@ seed = 123
 np.random.seed(seed)
 tf.set_random_seed(seed)
 random.seed(seed)
-from Computer_Vision_Pipeline.Mask_RCNN.config import Config
+from Computer_Vision_Pipeline.Models.Mask_RCNN.config import Config
 
 ### Nucleus Detection Model Utils ###
 #####################################

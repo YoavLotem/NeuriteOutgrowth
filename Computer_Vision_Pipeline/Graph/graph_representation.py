@@ -1,10 +1,10 @@
 from Computer_Vision_Pipeline.common import IMAGE_WIDTH, RADIUS, DISK_MASK
 import numpy as np
 
-def placeSearchDisk(neurite_endpoint, search_mask, DISK_MASK):
+def place_search_disk(neurite_endpoint, search_mask, DISK_MASK):
     """
     Places the DISK_MASK in the right place in the SEARCH_MASK, that is intended to search for cells in the proximity
-    of a neurite endpint, so that the center of the search disk will be at the neurite endpoint.
+    of a neurite endpoint, so that the center of the search disk will be at the neurite endpoint.
     This approach to set the SEARCH_MASK using the precomputed DISK_MASK is significantly faster than the naive approach
 
     Parameters
@@ -47,7 +47,7 @@ def placeSearchDisk(neurite_endpoint, search_mask, DISK_MASK):
     return search_mask, down, up, left, right
 
 
-def calcDistance(centroids, first_idx, second_idx):
+def calculate_distance(centroids, first_idx, second_idx):
     """
     Calculates the euclidean distance between two cells' centers
 
@@ -72,7 +72,7 @@ def calcDistance(centroids, first_idx, second_idx):
     return euclidean_distance
 
 
-def createEdges(connected_by_neurite, centroids):
+def create_edges(connected_by_neurite, centroids):
     """
     Create a list of edges between cells (nodes) that touch the same neurite (are in the proximity of its endpoints)
 
@@ -98,11 +98,12 @@ def createEdges(connected_by_neurite, centroids):
         cell_number = connected_by_neurite_list[cell_idx]
         for other_cell_idx in range(cell_idx + 1, num_connected_cells):
             other_cell_number = connected_by_neurite_list[other_cell_idx]
-            distance = calcDistance(centroids, cell_number, other_cell_number)
+            distance = calculate_distance(centroids, cell_number, other_cell_number)
             edges.append((cell_number, other_cell_number, {'weight': int(distance)}))
     return edges
 
-def searchCellsCloseToEndpoint(branch, search_mask, DISK_MASK, soma_inst_seg_mask):
+
+def search_cells_close_to_endpoint(branch, search_mask, DISK_MASK, soma_inst_seg_mask):
     """
     Identify cells in the proximity of a neurite endpoint
 
@@ -140,7 +141,7 @@ def searchCellsCloseToEndpoint(branch, search_mask, DISK_MASK, soma_inst_seg_mas
     center = (int(end_point_x), int(end_point_y))
     # place the search disk in the right place in the search mask
     # in order to look for cells in the proximity of the endpoint in a fast way
-    search_mask, down, up, left, right = placeSearchDisk(center, search_mask, DISK_MASK)
+    search_mask, down, up, left, right = place_search_disk(center, search_mask, DISK_MASK)
     # look for unique pixel values in the proximity of the endpoint
     # (each different pixel value in the cell body instance segmentation mask represents a different cell)
     cells_close_to_endpoint, counts = np.unique(soma_inst_seg_mask[search_mask], return_counts=True)
@@ -153,7 +154,7 @@ def searchCellsCloseToEndpoint(branch, search_mask, DISK_MASK, soma_inst_seg_mas
     return cells_close_to_endpoint, counts
 
 
-def findCellWithMaxOverlap(cells_close_to_endpoint, counts):
+def find_cell_with_max_overlap(cells_close_to_endpoint, counts):
     """
     Find the cell with maximal overlap with search disk in the proximity of an endpoint.
 
@@ -177,7 +178,7 @@ def findCellWithMaxOverlap(cells_close_to_endpoint, counts):
     return closest_cell
 
 
-def addSkeletonToGraph(graph, neurite_length_by_skeleton_id, connected_by_neurite, neurite_length_dict, skeleton_id, centroids):
+def add_skeleton_to_graph(graph, neurite_length_by_skeleton_id, connected_by_neurite, neurite_length_dict, skeleton_id, centroids):
     """
     Add the edges of cells that are connected via a specific neurite.
     In addition, the function divides the neurite's length between the cells that are connected by it
@@ -216,14 +217,12 @@ def addSkeletonToGraph(graph, neurite_length_by_skeleton_id, connected_by_neurit
         for cell in connected_by_neurite:
             neurite_length_dict[cell] += round(neurite_length_per_cell, 2)
         # create edges between each pair of cells that is connected to the neurite
-        edges = createEdges(connected_by_neurite, centroids)
+        edges = create_edges(connected_by_neurite, centroids)
         graph.add_edges_from(edges)
     return graph, neurite_length_dict
 
 
-
-
-def createGraph(graph, soma_inst_seg_mask, skeleton_branch_data, centroids):
+def create_graph(graph, soma_inst_seg_mask, skeleton_branch_data, centroids):
     """
     Build a graph representation of the cell culture in the field of view of the DAPI & Morphology images.
 
@@ -268,14 +267,14 @@ def createGraph(graph, soma_inst_seg_mask, skeleton_branch_data, centroids):
 
         # iterate other each branch in the skeleton and search for cells in proximity of endpoints
         for branch in skeleton_endpoint_branches.itertuples(index=False):
-            cells_close_to_endpoint, counts = searchCellsCloseToEndpoint(branch, search_mask, DISK_MASK, soma_inst_seg_mask)
+            cells_close_to_endpoint, counts = search_cells_close_to_endpoint(branch, search_mask, DISK_MASK, soma_inst_seg_mask)
             if len(cells_close_to_endpoint) == 0:
                 continue
             # register only one cell per endpoint as connected - the cell with maximal overlap
-            closest_cell = findCellWithMaxOverlap(cells_close_to_endpoint, counts)
+            closest_cell = find_cell_with_max_overlap(cells_close_to_endpoint, counts)
             connected_by_neurite.add(closest_cell)
 
         # after all the cells connected via the neurite's skeleton are found
         # we can insert the edges between them into the graph
-        graph, neurite_length_dict = addSkeletonToGraph(graph, neurite_length_by_skeleton_id, connected_by_neurite, neurite_length_dict, skeleton_id, centroids)
+        graph, neurite_length_dict = add_skeleton_to_graph(graph, neurite_length_by_skeleton_id, connected_by_neurite, neurite_length_dict, skeleton_id, centroids)
     return graph, neurite_length_dict
