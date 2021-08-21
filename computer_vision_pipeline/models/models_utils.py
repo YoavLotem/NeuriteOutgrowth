@@ -3,7 +3,7 @@ seed = 123
 np.random.seed(seed)
 tf.set_random_seed(seed)
 random.seed(seed)
-from Computer_Vision_Pipeline.Models.Mask_RCNN.config import Config
+from computer_vision_pipeline.models.Mask_RCNN.config import Config
 
 ### Nucleus Detection Model Utils ###
 #####################################
@@ -47,7 +47,7 @@ class BowlConfig(Config):
     USE_MINI_MASK = True
     DETECTION_MAX_INSTANCES = 5000
 
-### Live Neutire Segmentation Model Utils ###
+### Live Neutire segmentation Model Utils ###
 #############################################
 
 from keras import backend as K
