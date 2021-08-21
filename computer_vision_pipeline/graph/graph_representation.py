@@ -1,4 +1,4 @@
-from Computer_Vision_Pipeline.common import IMAGE_WIDTH, RADIUS, DISK_MASK
+from computer_vision_pipeline.common import IMAGE_WIDTH, RADIUS, DISK_MASK
 import numpy as np
 
 def place_search_disk(neurite_endpoint, search_mask, DISK_MASK):
@@ -186,7 +186,7 @@ def add_skeleton_to_graph(graph, neurite_length_by_skeleton_id, connected_by_neu
 
     Parameters
     ----------
-    graph: Instance of class Graph of NetworkX
+    graph: Instance of class graph of NetworkX
         The graph representation of the cell culture
     neurite_length_by_skeleton_id: Pandas Series
         Holds the total length of a each individual skeletonized neurite connected component
@@ -202,7 +202,7 @@ def add_skeleton_to_graph(graph, neurite_length_by_skeleton_id, connected_by_neu
 
     Returns
     -------
-    graph: Instance of class Graph of NetworkX
+    graph: Instance of class graph of NetworkX
         The graph representation of the cell culture after
          updating it with the information from the current neurite's skeleton
     neurite_length_dict: dict
@@ -228,7 +228,7 @@ def create_graph(graph, soma_inst_seg_mask, skeleton_branch_data, centroids):
 
     Parameters
     ----------
-    graph: Instance of class Graph of NetworkX
+    graph: Instance of class graph of NetworkX
         The graph representation of the cell culture in the field.
     soma_inst_seg_mask: ndarray
         2D array containing data with int type
@@ -242,7 +242,7 @@ def create_graph(graph, soma_inst_seg_mask, skeleton_branch_data, centroids):
 
     Returns
     -------
-    graph: Instance of class Graph of NetworkX
+    graph: Instance of class graph of NetworkX
         The graph representation of the cell culture
     neurite_length_dict: dict
         Contains the cell wise neurite length for each cell

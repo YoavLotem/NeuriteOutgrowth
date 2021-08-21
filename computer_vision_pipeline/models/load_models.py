@@ -1,5 +1,5 @@
-from Computer_Vision_Pipeline.Models.models_utils import *
-import Computer_Vision_Pipeline.Models.Mask_RCNN.model as modellib
+from computer_vision_pipeline.models.models_utils import *
+import computer_vision_pipeline.models.Mask_RCNN.model as modellib
 from keras.models import load_model
 from keras.models import Model
 from keras.layers import Input
@@ -22,7 +22,7 @@ nucModel.load_weights(model_path, by_name=True)
 
 
 
-### Live Neutire Segmentation Model ###
+### Live Neutire segmentation Model ###
 #######################################
 # loading the model (the loss functions are needed only for loading the model)
 neurite_model = load_model(r'Old_Architechture_neurite_net_cosine.h5',

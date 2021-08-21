@@ -1,4 +1,4 @@
-from Computer_Vision_Pipeline.inference_utils import extract_data_from_plate_images
+from computer_vision_pipeline.inference_utils import extract_data_from_plate_images
 
 if __name__ == "__main__":
     folder = r'SHSY5Y 8 day diff 5 drugs 020621/Hila_diff shsy5y_cal_DAPI_principle1_SHSY5Y 5diff cal DAPI 5 drugs_2021.06.02.13.58.15'
