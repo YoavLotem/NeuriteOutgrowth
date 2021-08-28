@@ -43,7 +43,7 @@ def filter_outliers_ransac(num_cells, Normalized_Neurite_Length):
     X = num_cells.reshape(-1, 1)
     y = Normalized_Neurite_Length.reshape(-1, 1)
     std = np.std(y)
-    ransac = RANSACRegressor(residual_threshold=1 * std, min_samples=5)
+    ransac = RANSACRegressor(residual_threshold=1 * std, min_samples=5, random_state=42)
     ransac.fit(X, y)
     yhat = ransac.predict(X)
     R = y - yhat

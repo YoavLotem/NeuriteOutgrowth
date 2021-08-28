@@ -1,4 +1,4 @@
-from computer_vision_pipeline.common import IMAGE_SHAPE
+from common import IMAGE_SHAPE
 import cv2
 import numpy as np
 

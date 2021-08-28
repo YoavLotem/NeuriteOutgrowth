@@ -1,4 +1,4 @@
-from computer_vision_pipeline.common import IMAGE_WIDTH, RADIUS, DISK_MASK
+from common import IMAGE_WIDTH, RADIUS, DISK_MASK
 import numpy as np
 
 def place_search_disk(neurite_endpoint, search_mask, DISK_MASK):

@@ -1,4 +1,4 @@
-from computer_vision_pipeline.common import IMAGE_WIDTH, IMAGE_HEIGHT, IMAGE_SHAPE
+from common import IMAGE_WIDTH, IMAGE_HEIGHT, IMAGE_SHAPE
 import numpy as np
 
 

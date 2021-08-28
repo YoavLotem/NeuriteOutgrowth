@@ -1,7 +1,7 @@
 from sklearn.mixture import GaussianMixture
 import cv2
 import numpy as np
-from computer_vision_pipeline.common import IMAGE_WIDTH, IMAGE_HEIGHT
+from common import IMAGE_WIDTH, IMAGE_HEIGHT
 
 
 def segment_foreground(morphology_image):
