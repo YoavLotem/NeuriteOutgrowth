@@ -47,65 +47,6 @@ def load_pickle(full_path):
         content = pickle.load(pickle_file)
     return content
 
-
-def calculate_connection_pdf(folder_path, ref_names, db):
-    pkl_files_names, plate_data_txt = extract_saved_data(folder_path)
-    prob_ref = []
-    for line, file_full_path in zip(plate_data_txt, pkl_files_names):
-        well_dictionary = load_pickle(file_full_path)
-        well_name = list(well_dictionary.keys())[0]
-        if well_name not in ref_names:
-            continue
-        list_of_graph_embedings = well_dictionary[well_name]
-        num_cells_list, neu_pix_list, apop_list, backscatter_list, neu_dist = unpack_dictionary(line, well_name)
-
-        result_tupple, _ = perform_full_outlier_removal(num_cells_list, neu_pix_list, apop_list, backscatter_list, neu_dist, list_of_graph_embedings, db, well_name)
-        if len(result_tupple) == 1:
-            continue
-        num_cells_list, neu_pix_list, apop_list, backscatter_list, neu_dist, list_of_graph_embedings = result_tupple
-        for idx, graph_and_node_list in enumerate(list_of_graph_embedings):
-            graph = graph_and_node_list[0]
-            node_list = graph_and_node_list[1]
-            length_list = [weight for (n1, n2, weight) in graph.edges.data("weight")]
-            prob_arr = connectivity_per_distance_pdf(node_list, np.array(length_list))
-            prob_ref.append(list(prob_arr))
-    if not prob_ref:
-        return False
-    connection_probability_density = np.mean(prob_ref, axis=0)
-    return connection_probability_density
-
-
-
-
-
-
-
-
-
-def calculate_thresholds(folder_path, ref_names, db, prob):
-    pkl_files_names, plate_data_txt = extract_saved_data(folder_path)
-    expected_conn = []
-    for line, file_full_path in zip(plate_data_txt, pkl_files_names):
-        well_dictionary = load_pickle(file_full_path)
-        well_name = list(well_dictionary.keys())[0]
-        if well_name not in ref_names:
-            continue
-        num_cells_list, neu_pix_list, apop_list, backscatter_list, neu_dist = unpack_dictionary(line, well_name)
-        list_of_graph_embedings = well_dictionary[well_name]
-
-        result_tupple, _ = perform_full_outlier_removal(num_cells_list, neu_pix_list, apop_list, backscatter_list, neu_dist, list_of_graph_embedings, db, well_name)
-        if len(result_tupple) == 1:
-            continue
-        num_cells_list, neu_pix_list, apop_list, backscatter_list, neu_dist, list_of_graph_embedings = result_tupple
-
-        for idx, graph_and_node_list in enumerate(list_of_graph_embedings):
-            node_list = graph_and_node_list[1]
-            expected_conn += list(ExpectedNumConnections(node_list, prob))
-
-    threshold_expected_connection = np.percentile(expected_conn, 10)
-    return threshold_expected_connection
-
-
 def calculate_well_features(graph_representation_per_field, well_data, conn_prob_density, thr_expected_conn):
 
     short_dst_count, mid_dst_count, long_dst_count, very_long_dst_count, cell_count, valid_fields_count = (0,)*6
@@ -156,7 +97,88 @@ def calculate_well_features(graph_representation_per_field, well_data, conn_prob
                      "# Cells": cell_count}
 
 
-def calculate_plate_outgrowth_measures(folder_path, conn_prob_density, thr_expected_conn):
+
+
+def calculate_connection_pdf(folder_path, ref_names):
+    pkl_files_names, plate_data_txt = extract_saved_data(folder_path)
+    prob_ref = []
+    for line, file_full_path in zip(plate_data_txt, pkl_files_names):
+        well_dictionary = load_pickle(file_full_path)
+        well_name = list(well_dictionary.keys())[0]
+        if well_name not in ref_names:
+            continue
+        list_of_graph_embedings = well_dictionary[well_name]
+        num_cells_list, neu_pix_list, apop_list, backscatter_list, neu_dist = unpack_dictionary(line, well_name)
+
+        result_tupple, _ = perform_full_outlier_removal(num_cells_list, neu_pix_list, apop_list, backscatter_list, neu_dist, list_of_graph_embedings, db, well_name)
+        if len(result_tupple) == 1:
+            continue
+        num_cells_list, neu_pix_list, apop_list, backscatter_list, neu_dist, list_of_graph_embedings = result_tupple
+        for idx, graph_and_node_list in enumerate(list_of_graph_embedings):
+            graph = graph_and_node_list[0]
+            node_list = graph_and_node_list[1]
+            length_list = [weight for (n1, n2, weight) in graph.edges.data("weight")]
+            prob_arr = connectivity_per_distance_pdf(node_list, np.array(length_list))
+            prob_ref.append(list(prob_arr))
+    if not prob_ref:
+        return False
+    connection_probability_density = np.mean(prob_ref, axis=0)
+    return connection_probability_density
+
+
+def calculate_isolated_cells_threshold(folder_path, negative_ref_wells, connection_pdf):
+    """
+    Calculate the threshold for isolated cells by calculating the distribution of expected connections (per cell) of the
+    negative reference, based on the connection probability density function. Threshold is calculated as the
+    10th percentile of the distribution.
+    
+    Parameters
+    ----------
+    folder_path: str
+        Path to a folder that contains the copmuter vision pipeline output:
+        pickle files for each well and one txt file.
+    negative_ref_wells: list
+        list containing the names (strings) of negative reference wells (disease model)
+    connection_pdf: ndarray
+        1d ndarray containing the discrete connection probability density function for each distance
+        (0-1000 pixels in 25 pixels bins)
+
+    Returns
+    -------
+    threshold_expected_connection: float
+        Threshold for isolated cells (cells with lower expected connections are considered isolated)
+    """
+    # extract the txt file and pickle files containing the output data of the computer vision pipeline
+    pkl_files_names, plate_data_txt = extract_saved_data(folder_path)
+    expected_conn = []
+    # iterate over each well's pickle file and txt data (line in the plate data txt file)
+    for well_data_as_txt, pickle_file_full_path in zip(plate_data_txt, pkl_files_names):
+        # extract the graph representation of this well's fields from the pickle file
+        graph_per_field, well_name = get_graph_per_field(pickle_file_full_path)
+        # extract data only from negative reference wells
+        if well_name not in negative_ref_wells:
+            continue
+        # extract this well's data (dict) from the computer vision pipeline txt file
+        well_data = ast.literal_eval(well_data_as_txt)[well_name]
+        # perform outlier removal
+        result_tuple, outlier_dict = perform_full_outlier_removal(well_data, graph_per_field)
+        # check that there are enough valid fields
+        if len(result_tuple) == 1:
+            continue
+        # get the data of the fields that were left after outlier removal
+        _, graph_per_field = result_tuple
+
+        # calculate the expected number of connections for each cell in each field in the well
+        for idx, graph_and_node_list in enumerate(graph_per_field):
+            node_list = graph_and_node_list[1]
+            expected_conn += list(ExpectedNumConnections(node_list, connection_pdf))
+
+    # set the threshold for an isolated cell at the 10th percentile
+    threshold_expected_connection = np.percentile(expected_conn, 10)
+    return threshold_expected_connection
+
+
+def calculate_plate_outgrowth_measures(folder_path, connection_pdf, thr_expected_conn):
     """
     Calculates neurite-outgrowth and toxicity measures
     for each well from the data extracted in the computer vision pipeline.
@@ -166,7 +188,7 @@ def calculate_plate_outgrowth_measures(folder_path, conn_prob_density, thr_expec
     folder_path: str
         Path to a folder that contains the copmuter vision pipeline output:
         pickle files for each well and one txt file.
-    conn_prob_density: ndarray
+    connection_pdf: ndarray
         1d ndarray containing the discrete connection probability density function for each distance
         (0-1000 pixels in 25 pixels bins)
     thr_expected_conn: float
@@ -196,7 +218,7 @@ def calculate_plate_outgrowth_measures(folder_path, conn_prob_density, thr_expec
         # get the data of the fields that were left after outlier removal
         well_data, graph_per_field = result_tuple
         # calculate the neurite outgrowth features
-        well_features = calculate_well_features(graph_per_field, well_data, conn_prob_density, thr_expected_conn)
+        well_features = calculate_well_features(graph_per_field, well_data, connection_pdf, thr_expected_conn)
         well_features["outlier_dictionary"] = outlier_dict
         plate_processed_data[well_name] = well_features
     return plate_processed_data
@@ -224,9 +246,9 @@ def process_plate_data(folder_path, negative_ref_wells):
 
     db = DBSCAN(eps=100, min_samples=10)
     # calculate the connection probability density function from negative reference wells data
-    connection_pdf = calculate_connection_pdf(folder_path, negative_ref_wells, db)
+    connection_pdf = calculate_connection_pdf(folder_path, negative_ref_wells)
     # calculate expected connection thresholds
-    thr_expected_connection = calculate_thresholds(folder_path, negative_ref_wells, db, connection_pdf)
+    thr_expected_connection = calculate_isolated_cells_threshold(folder_path, negative_ref_wells, connection_pdf)
     # extract neurite outgrowth measures and outlier information from each well in the plate
     plate_processed_data = calculate_plate_outgrowth_measures(folder_path, connection_pdf, thr_expected_connection)
     return plate_processed_data
