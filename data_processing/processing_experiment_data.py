@@ -1,10 +1,38 @@
 import pickle
 import os
 import ast
-from data_processing.outlier_removal import total_outlier_removal
+from data_processing.outlier_removal import perform_full_outlier_removal
 from data_processing.feature_extraction import *
 from common import EPS
 from sklearn.cluster import DBSCAN
+
+def extract_saved_data(folder_path):
+    """
+    extracts the data from the copmuter vision pipeline output folder:
+    pickle files names for each well and one txt file.
+
+    Parameters
+    ----------
+    folder_path: str
+        copmuter vision pipeline output folder
+
+    Returns
+    -------
+    pkl_files_names: list
+        list of the pickle files names in the output folder
+    plate_data_txt: list
+        lists of string that contain feature data from the computer vision pipeline (converted to dictionaries later)
+    """
+    pkl_files_names = [os.path.join(folder_path, file_name) for file_name in os.listdir(folder_path) if '.txt' not in file_name]
+    txt_file_name = [name for name in os.listdir(folder_path) if '.txt' in name][0]
+    plate_data_txt = [line.rstrip('\n') for line in open(os.path.join(folder_path, txt_file_name))]
+    return pkl_files_names, plate_data_txt
+
+def get_graph_per_field(pickle_file_full_path):
+    well_graph_representation_dict = load_pickle(pickle_file_full_path)
+    well_name = list(well_graph_representation_dict.keys())[0]
+    graph_representation_per_field = well_graph_representation_dict[well_name]
+    return graph_representation_per_field, well_name
 
 def unpack_dictionary(line, well_name):
     d = ast.literal_eval(line)
@@ -20,12 +48,10 @@ def load_pickle(full_path):
     return content
 
 
-def calculate_connection_pdf(folder, ref_names, db):
-    pkl_files = [os.path.join(folder, file_name) for file_name in os.listdir(folder) if '.txt' not in file_name]
-    txt_file_name = [name for name in os.listdir(folder) if '.txt' in name][0]
-    lines = [line.rstrip('\n') for line in open(os.path.join(folder, txt_file_name))]
+def calculate_connection_pdf(folder_path, ref_names, db):
+    pkl_files_names, plate_data_txt = extract_saved_data(folder_path)
     prob_ref = []
-    for line, file_full_path in zip(lines, pkl_files):
+    for line, file_full_path in zip(plate_data_txt, pkl_files_names):
         well_dictionary = load_pickle(file_full_path)
         well_name = list(well_dictionary.keys())[0]
         if well_name not in ref_names:
@@ -33,7 +59,7 @@ def calculate_connection_pdf(folder, ref_names, db):
         list_of_graph_embedings = well_dictionary[well_name]
         num_cells_list, neu_pix_list, apop_list, backscatter_list, neu_dist = unpack_dictionary(line, well_name)
 
-        result_tupple, _ = total_outlier_removal(num_cells_list, neu_pix_list, apop_list, backscatter_list, neu_dist, list_of_graph_embedings, db, well_name)
+        result_tupple, _ = perform_full_outlier_removal(num_cells_list, neu_pix_list, apop_list, backscatter_list, neu_dist, list_of_graph_embedings, db, well_name)
         if len(result_tupple) == 1:
             continue
         num_cells_list, neu_pix_list, apop_list, backscatter_list, neu_dist, list_of_graph_embedings = result_tupple
@@ -55,12 +81,11 @@ def calculate_connection_pdf(folder, ref_names, db):
 
 
 
-def calculate_thresholds(folder, ref_names, db, prob):
-    pkl_files = [os.path.join(folder, file_name) for file_name in os.listdir(folder) if '.txt' not in file_name]
-    txt_file_name = [name for name in os.listdir(folder) if '.txt' in name][0]
-    lines = [line.rstrip('\n') for line in open(os.path.join(folder, txt_file_name))]
+
+def calculate_thresholds(folder_path, ref_names, db, prob):
+    pkl_files_names, plate_data_txt = extract_saved_data(folder_path)
     expected_conn = []
-    for line, file_full_path in zip(lines, pkl_files):
+    for line, file_full_path in zip(plate_data_txt, pkl_files_names):
         well_dictionary = load_pickle(file_full_path)
         well_name = list(well_dictionary.keys())[0]
         if well_name not in ref_names:
@@ -68,7 +93,7 @@ def calculate_thresholds(folder, ref_names, db, prob):
         num_cells_list, neu_pix_list, apop_list, backscatter_list, neu_dist = unpack_dictionary(line, well_name)
         list_of_graph_embedings = well_dictionary[well_name]
 
-        result_tupple, _ = total_outlier_removal(num_cells_list, neu_pix_list, apop_list, backscatter_list, neu_dist, list_of_graph_embedings, db, well_name)
+        result_tupple, _ = perform_full_outlier_removal(num_cells_list, neu_pix_list, apop_list, backscatter_list, neu_dist, list_of_graph_embedings, db, well_name)
         if len(result_tupple) == 1:
             continue
         num_cells_list, neu_pix_list, apop_list, backscatter_list, neu_dist, list_of_graph_embedings = result_tupple
@@ -131,50 +156,57 @@ def calculate_well_features(graph_representation_per_field, well_data, conn_prob
                      "# Cells": cell_count}
 
 
-def calculate_plate_outgrowth_measures(folder, conn_prob_density, thr_expected_conn):
+def calculate_plate_outgrowth_measures(folder_path, conn_prob_density, thr_expected_conn):
     """
-    Calculates neurite-outgrowth measures (incluiding outlier removal)
+    Calculates neurite-outgrowth and toxicity measures
     for each well from the data extracted in the computer vision pipeline.
 
     Parameters
     ----------
-    folder: str
+    folder_path: str
         Path to a folder that contains the copmuter vision pipeline output:
         pickle files for each well and one txt file.
-    conn_prob_density:
-    thr_expected_conn
+    conn_prob_density: ndarray
+        1d ndarray containing the discrete connection probability density function for each distance
+        (0-1000 pixels in 25 pixels bins)
+    thr_expected_conn: float
+        threshold for expected connections - cells with values lower than this are considered "isolated" in the
+        calculation of "expected vs real connection ratio" feature.
 
     Returns
     -------
-
+    plate_processed_data: dict
+        dictionary containing each wells neurite outgrowth toxicity and outlier information
     """
-    pkl_files = [os.path.join(folder, file_name) for file_name in os.listdir(folder) if '.txt' not in file_name]
-    txt_file_name = [name for name in os.listdir(folder) if '.txt' in name][0]
-    plate_data_txt = [line.rstrip('\n') for line in open(os.path.join(folder, txt_file_name))]
-    plate_features = {}
-    for well_data_as_txt, file_full_path in zip(plate_data_txt, pkl_files):
-        well_graph_representation_dict = load_pickle(file_full_path)
-        well_name = list(well_graph_representation_dict.keys())[0]
-        graph_representation_per_field = well_graph_representation_dict[well_name]
+    # extract the txt file and pickle files containing the output data of the computer vision pipeline
+    pkl_files_names, plate_data_txt = extract_saved_data(folder_path)
+    plate_processed_data = {}
+    # iterate over each well's pickle file and txt data (line in the plate data txt file)
+    for well_data_as_txt, pickle_file_full_path in zip(plate_data_txt, pkl_files_names):
+        # extract the graph representation of this well's fields from the pickle file
+        graph_per_field, well_name = get_graph_per_field(pickle_file_full_path)
+        # extract this well's data (dict) from the computer vision pipeline txt file
         well_data = ast.literal_eval(well_data_as_txt)[well_name]
-        result_tuple, outlier_dict = total_outlier_removal(well_data, graph_representation_per_field)
+        # perform outlier removal
+        result_tuple, outlier_dict = perform_full_outlier_removal(well_data, graph_per_field)
         # check that there are enough valid fields
         if len(result_tuple) == 1:
-            plate_features[well_name] = {"outlier_dictionary": outlier_dict}
+            plate_processed_data[well_name] = {"outlier_dictionary": outlier_dict}
             continue
-        well_data, graph_representation_per_field = result_tuple
-        well_features = calculate_well_features(graph_representation_per_field, well_data, conn_prob_density, thr_expected_conn)
+        # get the data of the fields that were left after outlier removal
+        well_data, graph_per_field = result_tuple
+        # calculate the neurite outgrowth features
+        well_features = calculate_well_features(graph_per_field, well_data, conn_prob_density, thr_expected_conn)
         well_features["outlier_dictionary"] = outlier_dict
-        plate_features[well_name] = well_features
-    return plate_features
-
+        plate_processed_data[well_name] = well_features
+    return plate_processed_data
 
 
 def process_plate_data(folder_path, negative_ref_wells):
     """
-    Process plate data extracted from the computer vision pipeline that includes extracting
-    a connection probability function and thresholds from the negative reference wells then the
-    extraction of neurite-outgrowth and outlier data from each well in the plate.
+    Process plate data extracted from the computer vision pipeline. processing includes extracting
+    a connection probability function and thresholds from the negative reference wells followed by the
+    extraction of neurite-outgrowth, toxicity and outlier data from each well in the plate.
 
     Parameters
     ----------
@@ -186,8 +218,8 @@ def process_plate_data(folder_path, negative_ref_wells):
 
     Returns
     -------
-    plate_extracted_data: dict
-        dictionary containing each wells neurite outgrowth and outlier information
+    plate_processed_data: dict
+        dictionary containing each wells neurite outgrowth toxicity and outlier information
     """
 
     db = DBSCAN(eps=100, min_samples=10)
@@ -196,5 +228,5 @@ def process_plate_data(folder_path, negative_ref_wells):
     # calculate expected connection thresholds
     thr_expected_connection = calculate_thresholds(folder_path, negative_ref_wells, db, connection_pdf)
     # extract neurite outgrowth measures and outlier information from each well in the plate
-    plate_extracted_data = calculate_plate_outgrowth_measures(folder_path, connection_pdf, thr_expected_connection)
-    return plate_extracted_data
+    plate_processed_data = calculate_plate_outgrowth_measures(folder_path, connection_pdf, thr_expected_connection)
+    return plate_processed_data

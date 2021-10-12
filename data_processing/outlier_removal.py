@@ -53,7 +53,7 @@ def filter_data(graph_representation_per_field, well_data, filter_mask):
     return graph_representation_per_field, well_data_filtered
 
 
-def total_outlier_removal(well_data, graph_representation_per_field):
+def perform_full_outlier_removal(well_data, graph_representation_per_field):
     # remove outliers with thresholds
     filter_mask, outlier_dict = detect_outliers_with_thresholds(well_data, graph_representation_per_field)
     # filter data to remove outliers
