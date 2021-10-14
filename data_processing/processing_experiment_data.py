@@ -146,7 +146,7 @@ def calculate_well_features(graph_per_field, well_data, connection_pdf, thr_expe
         # calculate the Expected VS Real Connection Ratio feature for current field
         per_cell_num_connections = np.array([d for n, d in graph.degree()])
         per_cell_expected_num_connections = ExpectedNumConnections(node_dict, connection_pdf)
-        feature_dict["Expected VS Real Connection Ratio"] += list(per_cell_num_connections / (per_cell_expected_num_connections + EPS))
+        feature_dict["Expected VS Real Connection Ratio"] += list(per_cell_num_connections / (per_cell_expected_num_connections + 0.0001))
 
         # calculate the Disconnected With Neurites feature for current field
         dwn = pr_disconnected_with_neurite(per_cell_num_connections, np.array(field_neurite_distribtuion), per_cell_expected_num_connections, thr_expected_conn)
@@ -167,7 +167,7 @@ def calculate_well_features(graph_per_field, well_data, connection_pdf, thr_expe
     # connections made (edges) across this distance range (via neurites) to the amount of pairs of cells that are
     # in this distance range from one another (possible number of connections)
     for feature_name, dst in zip([connection_prob_features_names], distances):
-        feature_dict = edges_count_by_distance[dst] / (cell_pairs_count_by_distance[dst] + EPS)
+        feature_dict[feature_name] = edges_count_by_distance[dst] / (cell_pairs_count_by_distance[dst] + EPS)
 
     # calculate the rest of the well wise features as the mean of the cell or field values
     for feature_name in feature_dict.keys():

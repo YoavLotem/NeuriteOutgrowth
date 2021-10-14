@@ -28,4 +28,4 @@ MAX_HIGH_DENSITY_RATIO = 0.45  # max allowed ratio of extremely clustered cells
 DB = DBSCAN(eps=100, min_samples=10)  # using the DBSCAN core samples as highly dense cells check algorithm for details
 
 # smothing constant
-EPS = 0.0001
+EPS = 0
