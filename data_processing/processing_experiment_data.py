@@ -53,8 +53,8 @@ def calculate_well_features(graph_representation_per_field, well_data, conn_prob
     nnl, per_cell_neurite_length_distribution, ercr, dwn, edge_length_distribution = [], [], [], [], []
 
     for idx, graph_rep_list in enumerate(graph_representation_per_field):
-        graph, node_list = graph_rep_list
-        num_cells = len(node_list)
+        graph, node_dict = graph_rep_list
+        num_cells = len(node_dict)
         cell_count += num_cells
         valid_fields_count += 1
 
@@ -65,7 +65,7 @@ def calculate_well_features(graph_representation_per_field, well_data, conn_prob
         field_neu_dst = np.array(field_neu_dst)
 
         per_cell_num_connections = np.array([d for n, d in graph.degree()])
-        per_cell_expected_num_conn = ExpectedNumConnections(node_list, conn_prob_density)
+        per_cell_expected_num_conn = ExpectedNumConnections(node_dict, conn_prob_density)
         ercr += list(per_cell_num_connections / (per_cell_expected_num_conn + 0.0001))
 
         dwn.append(pr_disconnected_with_neurite(per_cell_num_connections, field_neu_dst, per_cell_expected_num_conn, thr_expected_conn))
@@ -77,13 +77,13 @@ def calculate_well_features(graph_representation_per_field, well_data, conn_prob
 
 
 
-        short_dist_pairs_count, mid_dist_pairs_count, long_dist_pairs_count, very_long_dist_pairs_count = denomenator(node_list)
+        short_dist_pairs_count, mid_dist_pairs_count, long_dist_pairs_count, very_long_dist_pairs_count = count_pairs_in_distances(node_dict)
         short_dst_count += short_dist_pairs_count
         mid_dst_count += mid_dist_pairs_count
         long_dst_count += long_dist_pairs_count
         very_long_dst_count += very_long_dist_pairs_count
 
-    short_edges, mid_edges, long_edges, very_long_edges = nomerator(np.array(edge_length_distribution))
+    short_edges, mid_edges, long_edges, very_long_edges = count_connections_in_distances(np.array(edge_length_distribution))
 
     return {"expectedVSreal_num_conn_s": np.nanmean(ercr),
                      "Valid Fields": valid_fields_count,
@@ -96,34 +96,138 @@ def calculate_well_features(graph_representation_per_field, well_data, conn_prob
                      "Very Long Connection Probability": very_long_edges / (very_long_dst_count + EPS),
                      "# Cells": cell_count}
 
+def calculate_well_features(graph_per_field, well_data, connection_pdf, thr_expected_conn):
+    """
+    Calculate the neurite outgrowth features from the well data.
+
+    Parameters
+    ----------
+    graph_per_field: list
+        a list of lists containing for each field in the well a list containing an instance of class graph of NetworkX
+        and a dictionary containing the graph's nodes information
+    well_data: dict
+        A dictionary containing raw data from the computer vision pipeline
+    connection_pdf: ndarray
+        1d ndarray containing the discrete connection probability density function for each distance
+        (0-1000 pixels in 25 pixels bins)
+    thr_expected_conn:float
+        threshold for expected connections - cells with values lower than this are considered "isolated" in the
+        calculation of "expected vs real connection ratio" feature.
+
+    Returns
+    -------
+    feature_dict: dict
+        A dictionary containing the features of the well
+    """
+    feature_dict = {"Expected VS Real Connection Ratio": [], "Valid Fields": 0, "Normalized Neurite Length": [], "Neurite Average": [], "Disconnected With Neurites": [], "Short Connection Probability": 0, "Intermediate Connection Probability": 0, "Long Connection Probability": 0, "Very Long Connection Probability": 0, "# Cells": 0}
+    distances = ["Short", "Intermediate", "Long", "Very Long"]
+    connection_prob_features_names = [n + " Connection Probability" for n in distances]
+    cell_pairs_count_by_distance = {dst: 0 for dst in distances}
+    edges_count_by_distance = {dst: 0 for dst in distances}
+    well_edge_length_distribution = []
+
+    for idx, graph_and_node_dict in enumerate(graph_per_field):
+        graph, node_dict = graph_and_node_dict
+        num_cells = len(node_dict)
+
+        # update the number of cells in the field to the total number of cells in the well
+        feature_dict["# Cells"] += num_cells
+
+        # update the number of valid fields
+        feature_dict["Valid Fields"] += 1
+
+        # calculte the Normalized Neurite Length of the current well
+        feature_dict["Normalized Neurite Length"].append((well_data["Neurite pixels"][idx] / num_cells))
+
+        # update the well's neurites length distribution
+        field_neurite_distribtuion = well_data["Neurite Distribution"][idx]
+        feature_dict["Neurite Average"] += field_neurite_distribtuion
+
+        # calculate the Expected VS Real Connection Ratio feature for current field
+        per_cell_num_connections = np.array([d for n, d in graph.degree()])
+        per_cell_expected_num_connections = ExpectedNumConnections(node_dict, connection_pdf)
+        feature_dict["Expected VS Real Connection Ratio"] += list(per_cell_num_connections / (per_cell_expected_num_connections + EPS))
+
+        # calculate the Disconnected With Neurites feature for current field
+        dwn = pr_disconnected_with_neurite(per_cell_num_connections, np.array(field_neurite_distribtuion), per_cell_expected_num_connections, thr_expected_conn)
+        feature_dict["Disconnected With Neurites"].append(dwn)
+
+        # update the well's edge length distribution with the current field's distribution
+        well_edge_length_distribution += [weight for (n1, n2, weight) in graph.edges.data("weight")]
+
+        # update the count of cell pairs in specific distance ranges from each other
+        for cell_pairs_count, dst in zip(count_pairs_in_distances(node_dict), distances):
+            cell_pairs_count_by_distance[dst] += cell_pairs_count
+
+    # count the edges in specific distance ranges
+    for edges_count, dst in zip(count_connections_in_distances(np.array(well_edge_length_distribution)), distances):
+        edges_count_by_distance[dst] = edges_count
+
+    # calculate the well's probability of connection in a specific distance range as the ratio between the number of
+    # connections made (edges) across this distance range (via neurites) to the amount of pairs of cells that are
+    # in this distance range from one another (possible number of connections)
+    for feature_name, dst in zip([connection_prob_features_names], distances):
+        feature_dict = edges_count_by_distance[dst] / (cell_pairs_count_by_distance[dst] + EPS)
+
+    # calculate the rest of the well wise features as the mean of the cell or field values
+    for feature_name in feature_dict.keys():
+        if (feature_name not in connection_prob_features_names) and (feature_name not in ["Valid Fields", "# Cells"]):
+            feature_dict[feature_name] = np.nanmean(feature_dict[feature_name])
+
+    return feature_dict
 
 
+def calculate_connection_pdf(folder_path, negative_ref_wells):
+    """
+    Calculate the connection probability density function based on the negative reference wells.
 
-def calculate_connection_pdf(folder_path, ref_names):
+    Parameters
+    ----------
+    folder_path: str
+        Path to a folder that contains the copmuter vision pipeline output:
+        pickle files for each well and one txt file.
+    negative_ref_wells: list
+        list containing the names (strings) of negative reference wells (disease model)
+
+    Returns
+    -------
+    connection_pdf: ndarray
+        1d ndarray containing the discrete connection probability density function for each distance
+        (0-1000 pixels in 25 pixels bins)
+    """
+    # extract the txt file and pickle files containing the output data of the computer vision pipeline
     pkl_files_names, plate_data_txt = extract_saved_data(folder_path)
-    prob_ref = []
-    for line, file_full_path in zip(plate_data_txt, pkl_files_names):
-        well_dictionary = load_pickle(file_full_path)
-        well_name = list(well_dictionary.keys())[0]
-        if well_name not in ref_names:
+    connection_prob_reference = []
+    # iterate over each well's pickle file and txt data (line in the plate data txt file)
+    for well_data_as_txt, pickle_file_full_path in zip(plate_data_txt, pkl_files_names):
+        # extract the graph representation of this well's fields from the pickle file
+        graph_per_field, well_name = get_graph_per_field(pickle_file_full_path)
+        # extract data only from negative reference wells
+        if well_name not in negative_ref_wells:
             continue
-        list_of_graph_embedings = well_dictionary[well_name]
-        num_cells_list, neu_pix_list, apop_list, backscatter_list, neu_dist = unpack_dictionary(line, well_name)
+        # extract this well's data (dict) from the computer vision pipeline txt file
+        well_data = ast.literal_eval(well_data_as_txt)[well_name]
+        # perform outlier removal
+        result_tuple, outlier_dict = perform_full_outlier_removal(well_data, graph_per_field)
+        # check that there are enough valid fields
+        if len(result_tuple) == 1:
+            continue
 
-        result_tupple, _ = perform_full_outlier_removal(num_cells_list, neu_pix_list, apop_list, backscatter_list, neu_dist, list_of_graph_embedings, db, well_name)
-        if len(result_tupple) == 1:
-            continue
-        num_cells_list, neu_pix_list, apop_list, backscatter_list, neu_dist, list_of_graph_embedings = result_tupple
-        for idx, graph_and_node_list in enumerate(list_of_graph_embedings):
-            graph = graph_and_node_list[0]
-            node_list = graph_and_node_list[1]
-            length_list = [weight for (n1, n2, weight) in graph.edges.data("weight")]
-            prob_arr = connectivity_per_distance_pdf(node_list, np.array(length_list))
-            prob_ref.append(list(prob_arr))
-    if not prob_ref:
-        return False
-    connection_probability_density = np.mean(prob_ref, axis=0)
-    return connection_probability_density
+        # get the data of the fields that were left after outlier removal
+        _, graph_per_field = result_tuple
+
+        # iterate over the graph representations of fields from the current reference well and
+        # calculate the probability of connection for each distance
+        for idx, graph_and_node_dict in enumerate(graph_per_field):
+            graph = graph_and_node_dict[0]
+            node_dict = graph_and_node_dict[1]
+            edges_length_list = [weight for (n1, n2, weight) in graph.edges.data("weight")]
+            connection_pdf_field = calculate_connection_pdf4single_field(node_dict, np.array(edges_length_list))
+            connection_prob_reference.append(list(connection_pdf_field))
+
+    # connection pdf is defined as the mean (per distance) connection probability across the negative group
+    connection_pdf = np.mean(connection_prob_reference, axis=0)
+    return connection_pdf
 
 
 def calculate_isolated_cells_threshold(folder_path, negative_ref_wells, connection_pdf):
@@ -169,9 +273,9 @@ def calculate_isolated_cells_threshold(folder_path, negative_ref_wells, connecti
         _, graph_per_field = result_tuple
 
         # calculate the expected number of connections for each cell in each field in the well
-        for idx, graph_and_node_list in enumerate(graph_per_field):
-            node_list = graph_and_node_list[1]
-            expected_conn += list(ExpectedNumConnections(node_list, connection_pdf))
+        for idx, graph_and_node_dict in enumerate(graph_per_field):
+            node_dict = graph_and_node_dict[1]
+            expected_conn += list(ExpectedNumConnections(node_dict, connection_pdf))
 
     # set the threshold for an isolated cell at the 10th percentile
     threshold_expected_connection = np.percentile(expected_conn, 10)
@@ -243,9 +347,6 @@ def process_plate_data(folder_path, negative_ref_wells):
     plate_processed_data: dict
         dictionary containing each wells neurite outgrowth toxicity and outlier information
     """
-
-    db = DBSCAN(eps=100, min_samples=10)
-    # calculate the connection probability density function from negative reference wells data
     connection_pdf = calculate_connection_pdf(folder_path, negative_ref_wells)
     # calculate expected connection thresholds
     thr_expected_connection = calculate_isolated_cells_threshold(folder_path, negative_ref_wells, connection_pdf)

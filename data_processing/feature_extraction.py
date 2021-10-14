@@ -16,7 +16,7 @@ def ExpectedNumConnections(node_list, prob):
     return expected_num_conn
 
 
-def denomenator(node_list):
+def count_pairs_in_distances(node_list):
     node_arr = np.array(list(node_list.values()))
     d1 = scipy.spatial.distance.pdist(node_arr)
     short_dist = np.sum(d1 <= 100)
@@ -26,7 +26,7 @@ def denomenator(node_list):
     return short_dist, mid_dist, long_dist, very_long
 
 
-def nomerator(edge_lenghts):
+def count_connections_in_distances(edge_lenghts):
     short_edges = np.sum(edge_lenghts <= 100)
     mid_edges = np.sum(np.logical_and(edge_lenghts > 100, edge_lenghts <= 300))
     long_edges = np.sum(np.logical_and(edge_lenghts > 300, edge_lenghts <= 400))
@@ -42,7 +42,7 @@ def pr_disconnected_with_neurite(degrees, temp_image_neu_dst, expected_num_conn,
     return (len(degrees) ** 0.5) * conditional
 
 
-def connectivity_per_distance_pdf(node_list, edge_lenghts):
+def calculate_connection_pdf4single_field(node_list, edge_lenghts):
     node_arr = np.array(list(node_list.values()))
     d1 = scipy.spatial.distance.pdist(node_arr)
     prob_arr = np.zeros((41))

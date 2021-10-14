@@ -3,6 +3,7 @@ from sklearn.linear_model import RANSACRegressor
 from scipy.stats import norm
 from itertools import compress
 from common import MAX_APOP_RATIO, MAX_CELL_NUM, MIN_CELL_NUM, MAX_HIGH_DENSITY_RATIO, DB, MIN_VALID_FIELDS
+from sklearn.cluster import DBSCAN
 
 
 def detect_outliers_with_thresholds(well_data, list_of_graph_embedings):
