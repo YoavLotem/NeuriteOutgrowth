@@ -29,3 +29,8 @@ DB = DBSCAN(eps=100, min_samples=10)  # using the DBSCAN core samples as highly 
 
 # smothing constant
 EPS = 0
+
+# setting distance constants
+MIN_DISTANCE = 0
+MAX_DISTANCE = 1000
+BIN_SIZE = 25
