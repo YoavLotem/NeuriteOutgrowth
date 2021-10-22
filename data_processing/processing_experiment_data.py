@@ -50,8 +50,8 @@ def calculate_well_features(graph_per_field, well_data, connection_pdf, thr_expe
         feature_dict["Normalized Neurite Length"].append((well_data["Neurite pixels"][idx] / num_cells))
 
         # update the well's neurites length distribution
-        field_neurite_distribtuion = well_data["Neurite Distribution"][idx]
-        feature_dict["Neurite Average"] += field_neurite_distribtuion
+        field_neurite_distribution = well_data["Neurite Distribution"][idx]
+        feature_dict["Neurite Average"] += field_neurite_distribution
 
         # calculate the Expected VS Real Connection Ratio feature for current field
         per_cell_num_connections = np.array([d for n, d in graph.degree()])
@@ -59,7 +59,8 @@ def calculate_well_features(graph_per_field, well_data, connection_pdf, thr_expe
         feature_dict["Expected VS Real Connection Ratio"] += list(per_cell_num_connections / (per_cell_expected_num_connections + 0.0001))
 
         # calculate the Disconnected With Neurites feature for current field
-        dwn = pr_disconnected_with_neurite(per_cell_num_connections, np.array(field_neurite_distribtuion), per_cell_expected_num_connections, thr_expected_conn)
+        dwn = calculate_disconnected_with_neurites(per_cell_num_connections, np.array(field_neurite_distribution), per_cell_expected_num_connections, thr_expected_conn)
+
         feature_dict["Disconnected With Neurites"].append(dwn)
 
         # update the well's edge length distribution with the current field's distribution
@@ -132,7 +133,9 @@ def calculate_connection_pdf(folder_path, negative_ref_wells):
             graph = graph_and_node_dict[0]
             node_dict = graph_and_node_dict[1]
             edges_length_list = [weight for (n1, n2, weight) in graph.edges.data("weight")]
-            connection_pdf_field = calculate_connection_pdf_for_a_single_field(node_dict, np.array(edges_length_list))
+            # connection_pdf_field = calculate_connection_pdf_for_a_single_field(node_dict, np.array(edges_length_list))
+            connection_pdf_field = calculate_connection_pdf_for_a_single_field_2(node_dict, np.array(edges_length_list))
+            # print(np.sum(connection_pdf_field[:len(connection_pdf_field2)] - connection_pdf_field2))
             connection_prob_reference.append(list(connection_pdf_field))
 
     # connection pdf is defined as the mean (per distance) connection probability across the negative group
