@@ -163,29 +163,8 @@ def calculate_disconnected_with_neurites(num_connections, neurite_distribution, 
 
 
 
-def calculate_connection_pdf_for_a_single_field(node_dict, edge_lenghts):
-    node_arr = np.array(list(node_dict.values()))
-    d1 = scipy.spatial.distance.pdist(node_arr)
-    prob_arr = np.zeros((41))
-    distances = np.arange(25, 1050, 25)
-    deno0 = np.sum(d1 <= 25)
-    numer0 = np.sum(edge_lenghts <= 0)
-    if deno0 == 0:
-        prob_arr[0] = 0
-    else:
-        prob_arr[0] = numer0 / deno0
 
-    for i, dist in enumerate(distances):
-        deno = np.sum(np.logical_and(d1 <= dist, d1 > dist - 25))
-        numer = np.sum(np.logical_and(edge_lenghts <= dist, edge_lenghts > dist - 25))
-        if deno == 0:
-            prob_arr[i] = 0
-        else:
-            prob_arr[i] = numer / deno
-    return prob_arr
-
-
-def calculate_connection_pdf_for_a_single_field_2(node_dict, edge_lengths):
+def calculate_connection_pdf_for_a_single_field(node_dict, edge_lengths):
     """
     Calulculates the probability of connection for a single field over multiple of distance ranges
     (25 [pixels] bins covering the 0-1000 [pixels] range)
@@ -199,7 +178,9 @@ def calculate_connection_pdf_for_a_single_field_2(node_dict, edge_lengths):
 
     Returns
     -------
-
+    connection_pdf_field: ndarray
+         1d ndarray containing the discrete connection probability density function for each distance range
+        (0-1000 pixels in 25 pixels bins) for a single field
     """
     node_arr = np.array(list(node_dict.values()))
     pairwise_distances_condensed = scipy.spatial.distance.pdist(node_arr)

@@ -25,12 +25,23 @@ MAX_APOP_RATIO = 0.25  # max allowed ratio of un-viable cells in a field
 MAX_HIGH_DENSITY_RATIO = 0.45  # max allowed ratio of extremely clustered cells
 
 # Density Parameters
-DB = DBSCAN(eps=100, min_samples=10)  # using the DBSCAN core samples as highly dense cells check algorithm for details
+D_EPS = 100
+MIN_SAMPLES = 10
 
-# smothing constant
+# smoothing constant
 EPS = 0
 
 # setting distance constants
 MIN_DISTANCE = 0
 MAX_DISTANCE = 1000
 BIN_SIZE = 25
+
+# RANSAC constants
+RANSAC_MIN_SAMPLES = 5
+PROBABILITY_THRESHOLD = 0.05
+
+assert RANSAC_MIN_SAMPLES <= MIN_VALID_FIELDS, "The minimal number of valid fields has to be equal or larger" \
+                                               " than the number of minimal ransac samples or else the algorithm night" \
+                                               " not work"
+
+

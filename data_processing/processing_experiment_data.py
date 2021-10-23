@@ -3,7 +3,7 @@ import os
 import ast
 from data_processing.outlier_removal import perform_full_outlier_removal
 from data_processing.feature_extraction import *
-from common import EPS
+from common import EPS, MIN_VALID_FIELDS
 from data_processing.utils import *
 
 def calculate_well_features(graph_per_field, well_data, connection_pdf, thr_expected_conn):
@@ -16,7 +16,7 @@ def calculate_well_features(graph_per_field, well_data, connection_pdf, thr_expe
         A list of lists containing for each field in the well a list containing an instance of class graph of NetworkX
         and a dictionary containing the graph's nodes information
     well_data: dict
-        A dictionary containing raw data from the computer vision pipeline
+        A dictionary containing a well's raw data from the computer vision pipeline
     connection_pdf: ndarray
         1d ndarray containing the discrete connection probability density function for each distance
         (0-1000 pixels in 25 pixels bins)
@@ -120,13 +120,10 @@ def calculate_connection_pdf(folder_path, negative_ref_wells):
         # extract this well's data (dict) from the computer vision pipeline txt file
         well_data = ast.literal_eval(well_data_as_txt)[well_name]
         # perform outlier removal
-        result_tuple, outlier_dict = perform_full_outlier_removal(well_data, graph_per_field)
+        well_data, graph_per_field, outlier_dict = perform_full_outlier_removal(well_data, graph_per_field)
         # check that there are enough valid fields
-        if len(result_tuple) == 1:
+        if outlier_dict["Valid Fields"] < MIN_VALID_FIELDS:
             continue
-
-        # get the data of the fields that were left after outlier removal
-        _, graph_per_field = result_tuple
 
         # iterate over the graph representations of fields from the current reference well and
         # calculate the probability of connection for each distance
@@ -135,8 +132,6 @@ def calculate_connection_pdf(folder_path, negative_ref_wells):
             node_dict = graph_and_node_dict[1]
             edges_length_list = [weight for (n1, n2, weight) in graph.edges.data("weight")]
             connection_pdf_field = calculate_connection_pdf_for_a_single_field(node_dict, np.array(edges_length_list))
-            connection_pdf_field2 = calculate_connection_pdf_for_a_single_field_2(node_dict, np.array(edges_length_list))
-            print(connection_pdf_field2[0] - connection_pdf_field[0])
             connection_prob_reference.append(list(connection_pdf_field))
 
     # connection pdf is defined as the mean (per distance) connection probability across the negative group
@@ -179,12 +174,10 @@ def calculate_isolated_cells_threshold(folder_path, negative_ref_wells, connecti
         # extract this well's data (dict) from the computer vision pipeline txt file
         well_data = ast.literal_eval(well_data_as_txt)[well_name]
         # perform outlier removal
-        result_tuple, outlier_dict = perform_full_outlier_removal(well_data, graph_per_field)
+        well_data, graph_per_field, outlier_dict = perform_full_outlier_removal(well_data, graph_per_field)
         # check that there are enough valid fields
-        if len(result_tuple) == 1:
+        if outlier_dict["Valid Fields"] < MIN_VALID_FIELDS:
             continue
-        # get the data of the fields that were left after outlier removal
-        _, graph_per_field = result_tuple
 
         # calculate the expected number of connections for each cell in each field in the well
         for idx, graph_and_node_dict in enumerate(graph_per_field):
@@ -228,13 +221,11 @@ def calculate_plate_outgrowth_measures(folder_path, connection_pdf, thr_expected
         # extract this well's data (dict) from the computer vision pipeline txt file
         well_data = ast.literal_eval(well_data_as_txt)[well_name]
         # perform outlier removal
-        result_tuple, outlier_dict = perform_full_outlier_removal(well_data, graph_per_field)
+        well_data, graph_per_field, outlier_dict = perform_full_outlier_removal(well_data, graph_per_field)
         # check that there are enough valid fields
-        if len(result_tuple) == 1:
+        if outlier_dict["Valid Fields"] < MIN_VALID_FIELDS:
             plate_processed_data[well_name] = {"outlier_dictionary": outlier_dict}
             continue
-        # get the data of the fields that were left after outlier removal
-        well_data, graph_per_field = result_tuple
         # calculate the neurite outgrowth features
         well_features = calculate_well_features(graph_per_field, well_data, connection_pdf, thr_expected_conn)
         well_features["outlier_dictionary"] = outlier_dict
