@@ -90,7 +90,8 @@ def calculate_well_features(graph_per_field, well_data, connection_pdf, thr_expe
 
 def calculate_connection_pdf(folder_path, negative_ref_wells):
     """
-    Calculate the connection probability density function based on the negative reference wells.
+    Calculate the connection probability density function - the probability of connection over multiple distance ranges,
+    (25 [pixels] bins covering the 0-1000 [pixels] range) based on the negative reference wells.
 
     Parameters
     ----------
@@ -103,7 +104,7 @@ def calculate_connection_pdf(folder_path, negative_ref_wells):
     Returns
     -------
     connection_pdf: ndarray
-        1d ndarray containing the discrete connection probability density function for each distance
+        1d ndarray containing the discrete connection probability density function for each distance range
         (0-1000 pixels in 25 pixels bins)
     """
     # extract the txt file and pickle files containing the output data of the computer vision pipeline
@@ -133,9 +134,9 @@ def calculate_connection_pdf(folder_path, negative_ref_wells):
             graph = graph_and_node_dict[0]
             node_dict = graph_and_node_dict[1]
             edges_length_list = [weight for (n1, n2, weight) in graph.edges.data("weight")]
-            # connection_pdf_field = calculate_connection_pdf_for_a_single_field(node_dict, np.array(edges_length_list))
-            connection_pdf_field = calculate_connection_pdf_for_a_single_field_2(node_dict, np.array(edges_length_list))
-            # print(np.sum(connection_pdf_field[:len(connection_pdf_field2)] - connection_pdf_field2))
+            connection_pdf_field = calculate_connection_pdf_for_a_single_field(node_dict, np.array(edges_length_list))
+            connection_pdf_field2 = calculate_connection_pdf_for_a_single_field_2(node_dict, np.array(edges_length_list))
+            print(connection_pdf_field2[0] - connection_pdf_field[0])
             connection_prob_reference.append(list(connection_pdf_field))
 
     # connection pdf is defined as the mean (per distance) connection probability across the negative group

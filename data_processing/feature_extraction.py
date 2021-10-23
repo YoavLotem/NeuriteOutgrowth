@@ -88,15 +88,14 @@ def count_pairs(node_dict):
     return num_short_distance_pairs, num_medium_distance_pairs, num_long_distance_pairs, num_very_long_distance_pairs
 
 
-
-def count_connections(edge_lenghts):
+def count_connections(edge_lengths):
     """
     Counts the number of connections in a well in each of 4 different distance ranges [pixels]
     (0-100, 100-300, 300-400, 300-inf).
 
     Parameters
     ----------
-    edge_lenghts: ndarray
+    edge_lengths: ndarray
        ndarray containing the length distribution of connections via neurites in a well
 
     Returns
@@ -110,10 +109,10 @@ def count_connections(edge_lenghts):
     very_long_edges_count: int
                 number of connected cell pairs in a 300-inf pixels distance
     """
-    short_edges_count = np.sum(edge_lenghts <= 100)
-    medium_edges_count = np.sum(np.logical_and(edge_lenghts > 100, edge_lenghts <= 300))
-    long_edges_count = np.sum(np.logical_and(edge_lenghts > 300, edge_lenghts <= 400))
-    very_long_edges_count = np.sum(edge_lenghts > 300)
+    short_edges_count = np.sum(edge_lengths <= 100)
+    medium_edges_count = np.sum(np.logical_and(edge_lengths > 100, edge_lengths <= 300))
+    long_edges_count = np.sum(np.logical_and(edge_lengths > 300, edge_lengths <= 400))
+    very_long_edges_count = np.sum(edge_lengths > 300)
     return short_edges_count, medium_edges_count, long_edges_count, very_long_edges_count
 
 
@@ -186,22 +185,45 @@ def calculate_connection_pdf_for_a_single_field(node_dict, edge_lenghts):
     return prob_arr
 
 
-def calculate_connection_pdf_for_a_single_field_2(node_dict, edge_lenghts):
+def calculate_connection_pdf_for_a_single_field_2(node_dict, edge_lengths):
+    """
+    Calulculates the probability of connection for a single field over multiple of distance ranges
+    (25 [pixels] bins covering the 0-1000 [pixels] range)
+
+    Parameters
+    ----------
+    node_dict: dict
+        A dictionary that contain the field's nuclei centroids X,Y coordinates (which are the graph's nodes)
+    edge_lengths: ndarray
+       ndarray containing the length distribution of connections via neurites in a field
+
+    Returns
+    -------
+
+    """
     node_arr = np.array(list(node_dict.values()))
     pairwise_distances_condensed = scipy.spatial.distance.pdist(node_arr)
+    # bins for the connection PDF
     distances_arr = np.arange(MIN_DISTANCE, MAX_DISTANCE, BIN_SIZE)
+    # array to keep probability values from the current field
     connection_pdf_field = np.zeros(len(distances_arr))
 
     for idx, distance in enumerate(distances_arr):
+        # count how many cell pairs exists within the distance range of distance - distance + BIN_SIZE
         cell_pairs_in_distance_range = np.sum(np.logical_and(pairwise_distances_condensed >= distance,
                                      pairwise_distances_condensed < (distance + BIN_SIZE)))
 
-        connected_cell_pairs_in_distance_range = np.sum(np.logical_and(edge_lenghts >= distance,
-                                      edge_lenghts < (distance + BIN_SIZE)))
+        # count how many connected cell pairs exists within the distance range of distance - distance + BIN_SIZE
+        connected_cell_pairs_in_distance_range = np.sum(np.logical_and(edge_lengths >= distance,
+                                                                       edge_lengths < (distance + BIN_SIZE)))
+
 
         if cell_pairs_in_distance_range == 0:
+            # if there are no cell pairs in this distance range than the probability of connection is 0
             connection_pdf_field[idx] = 0
         else:
+            # we define the probability of connection (within the current distance range) as the
+            # ratio between the amount of connected cells to the overall number of cell pairs
             connection_pdf_field[idx] = connected_cell_pairs_in_distance_range / cell_pairs_in_distance_range
     return connection_pdf_field
 
