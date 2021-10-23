@@ -5,7 +5,7 @@ def place_search_disk(neurite_endpoint, search_mask, DISK_MASK):
     """
     Places the DISK_MASK in the right place in the search_mask, that is intended to search for cells in the proximity
     of a neurite endpoint, so that the center of the search disk will be at the neurite endpoint.
-    This approach to set the SEARCH_MASK using the precomputed DISK_MASK is significantly faster than the naive approach
+    This approach to set the search_mask using the precomputed DISK_MASK is significantly faster than the naive approach
 
     Parameters
     ----------
