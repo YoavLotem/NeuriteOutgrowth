@@ -6,8 +6,8 @@ def segment_nuclei_by_quarters(dapi_im, nucModel):
     """
     Performs Nuclei instance segmentation to the DAPI image by dividing it to 4 quarters
     and performing instance segmentation to each quarter seperately, then combining the results.
-    This procedure allows the model to detect a larger amount of cells in the image as the
-    limitation of the model is up to 1000 cells, this procedure allows the model to detect up to 4000 cells
+    This procedure allows the model to detect a larger amount of cells in the image with less memory constraints.
+    Up to 1000 cells can be detected per quarter, thus allowing the model to detect up to 4000 cells
 
     Parameters
     ----------
