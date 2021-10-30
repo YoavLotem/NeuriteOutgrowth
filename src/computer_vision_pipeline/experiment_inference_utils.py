@@ -16,7 +16,7 @@ from src.computer_vision_pipeline.graph.graph_representation import create_graph
 
 def single_field_procedure(folder, fitc_image_name):
     """
-    Perform all the procedures required in order to extract neurite outgrowth features from a single field of view
+    Perform all the procedures required in order to extract neurite outgrowth related data from a single field of view
     (that includes a DAPI & FITC images).
 
     Parameters
@@ -91,7 +91,7 @@ def single_field_procedure(folder, fitc_image_name):
 
 def extract_data_from_plate_images(folder, saving_folder, fields_per_well=20):
     """
-    Extracts and saves neurite outgrowth features from all the images in a folder that
+    Extracts and saves neurite outgrowth related data from all the images in a folder that
     contain images from a single plate.
 
     Parameters
