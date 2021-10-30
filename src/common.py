@@ -1,10 +1,10 @@
 import numpy as np
-from sklearn.cluster import DBSCAN
 
 # Image Parameters
 IMAGE_WIDTH = 2048
 IMAGE_HEIGHT = 2048
 IMAGE_SHAPE = (2048, 2048)
+
 
 
 # Set a boolean mask that will contain a round search area to search for cells in the proximity of neurite endpoints
@@ -15,7 +15,6 @@ DISK_MASK = (circle_x - (RADIUS + 1)) ** 2 + (circle_y - (RADIUS + 1)) ** 2 <= R
 
 
 # Outlier Removal
-
 MIN_VALID_FIELDS = 5
 
 # Outlier removal thresholds
