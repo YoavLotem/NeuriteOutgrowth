@@ -7,7 +7,8 @@ from skan import Skeleton, summarize
 from skimage.morphology import watershed
 from src.computer_vision_pipeline.utils import save_pickle, append_dict, sortWells, isSaved, byFieldNumber
 from src.computer_vision_pipeline.models.load_models import nucModel, neurite_model
-from src.computer_vision_pipeline.segmentation.nuclei_instance_segmentation import segment_nuclei, segmentForeground
+from src.computer_vision_pipeline.segmentation.foreground_segmentation import segment_foreground
+from src.computer_vision_pipeline.segmentation.nuclei_instance_segmentation import segment_nuclei
 from src.computer_vision_pipeline.segmentation.neurite_semantic_segmentation import segment_neurites
 from src.computer_vision_pipeline.segmentation.backscatter import quntifyBackscatter
 from src.computer_vision_pipeline.graph.graph_representation import create_graph
@@ -40,7 +41,7 @@ def single_field_procedure(folder, fitc_image_name):
     dapi_image = cv2.imread(os.path.join(folder, fitc_image_name.replace('FITC', 'DAPI')))
 
     # perform foreground segmentation - which pixels in the FITC image belongs to a cell
-    cells_foreground_mask = segmentForeground(fitc_image)
+    cells_foreground_mask = segment_foreground(fitc_image)
 
     # perform nuclei instance segmentation and extract each individual nucleus' pixels location,
     # center location and fraction of dead cells
