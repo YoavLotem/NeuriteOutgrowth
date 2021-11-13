@@ -1,16 +1,19 @@
 import numpy as np
-
+import os
 
 class ExperimentConfig:
+
+    # number of fields of view in each well - pairs of images (DAPI and FITC) for each field
+    FIELDS_PER_WELL = 20
 
     # smoothing constant
     EPS = 0
 
-    # Image dimensions
+    # Moedl paths:
     # -------------------------------------------------------------------------
-    IMAGE_WIDTH = 2048
-    IMAGE_HEIGHT = 2048
-    IMAGE_SHAPE = (IMAGE_HEIGHT, IMAGE_WIDTH)
+    NUCLEI_MASK_RCNN_WEIGHTS_PATH = "deepretina_final.h5"
+    NEURITE_SEGMENTATION_MODEL_PATH = "Old_Architechture_neurite_net_cosine.h5"
+
 
     # Parameters for a boolean mask that containing a round search area to search
     # for cells in the proximity of neurite endpoints
@@ -79,7 +82,7 @@ class ExperimentConfig:
         """Display Configuration values."""
         print("\nConfigurations:")
         for a in dir(self):
-            if not a.startswith("__") and not callable(getattr(self, a)):
+            if a.isupper():
                 print("{:30} {}".format(a, getattr(self, a)))
         print("\n")
 

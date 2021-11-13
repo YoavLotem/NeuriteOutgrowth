@@ -1,11 +1,10 @@
-from src.common import IMAGE_WIDTH, RADIUS, DISK_MASK
 import numpy as np
 
-def place_search_disk(neurite_endpoint, search_mask, DISK_MASK):
+def place_search_disk(neurite_endpoint, search_mask, disk_mask, radius, im_shape):
     """
     Places the DISK_MASK in the right place in the search_mask, that is intended to search for cells in the proximity
     of a neurite endpoint, so that the center of the search disk will be at the neurite endpoint.
-    This approach to set the search_mask using the precomputed DISK_MASK is significantly faster than the naive approach
+    This approach to set the search_mask using the precomputed disk_mask is significantly faster than the naive approach
 
     Parameters
     ----------
@@ -14,9 +13,11 @@ def place_search_disk(neurite_endpoint, search_mask, DISK_MASK):
     search_mask: ndarray
         2D array containing data with boolean type
         has the same size as the morphology image and searches for cells in the neurite endpoint proximity
-    DISK_MASK: ndarray
+    disk_mask: ndarray
         2D array containing data with boolean type
-        a square mask containing the RADIUS sized search disk
+        a square mask containing the radius sized search disk
+    im_shape: tuple
+        tuple of (image_height, image_width) in pixels
 
     Returns
     -------
@@ -25,25 +26,29 @@ def place_search_disk(neurite_endpoint, search_mask, DISK_MASK):
         has the same size as the morphology image and searches for cells in the neurite endpoint proximity
         contains a search disk to search for cells surrounding the neurite_endpoint.
     up, down, right, left: int
-        pixel coordinates where the DISK_MASK was placed
+        pixel coordinates where the disk_mask was placed
     """
+
+    # image dimensions
+    image_height, image_width = im_shape
+
 
     # set up the correct position to place the square mask containing the search disk (if the neurite endpoint is close
     # to one of the image edges the mask will be trimmed because we can't search outside of the image)
 
-    left = max(neurite_endpoint[0] - (RADIUS + 1), 0)
-    right = min(neurite_endpoint[0] + (RADIUS + 1), IMAGE_WIDTH - 1)
-    down = max(neurite_endpoint[1] - (RADIUS + 1), 0)
-    up = min(neurite_endpoint[1] + (RADIUS + 1), IMAGE_WIDTH - 1)
+    left = max(neurite_endpoint[0] - (radius + 1), 0)
+    right = min(neurite_endpoint[0] + (radius + 1), image_width - 1)
+    down = max(neurite_endpoint[1] - (radius + 1), 0)
+    up = min(neurite_endpoint[1] + (radius + 1), image_height - 1)
 
     # calculate how much of the DISK_MASK do we need in case the endpoint is close to the edge
-    disc_left = max((RADIUS + 1) - (neurite_endpoint[0] - left), 0)
-    disc_right = min(right - neurite_endpoint[0] + (RADIUS + 1), (RADIUS + 1) * 2)
-    disc_down = max((RADIUS + 1) - (neurite_endpoint[1] - down), 0)
-    disc_up = min(up - neurite_endpoint[1] + (RADIUS + 1), (RADIUS + 1) * 2)
+    disc_left = max((radius + 1) - (neurite_endpoint[0] - left), 0)
+    disc_right = min(right - neurite_endpoint[0] + (radius + 1), (radius + 1) * 2)
+    disc_down = max((radius + 1) - (neurite_endpoint[1] - down), 0)
+    disc_up = min(up - neurite_endpoint[1] + (radius + 1), (radius + 1) * 2)
 
     # place the DISK_MASK with the correct coordinate in the SEARCH_MASK in the correct position
-    search_mask[down: up, left: right] = DISK_MASK[disc_down: disc_up, disc_left: disc_right]
+    search_mask[down: up, left: right] = disk_mask[disc_down: disc_up, disc_left: disc_right]
     return search_mask, down, up, left, right
 
 
@@ -103,7 +108,7 @@ def create_edges(connected_by_neurite, centroids):
     return edges
 
 
-def search_cells_close_to_endpoint(branch, search_mask, DISK_MASK, soma_inst_seg_mask):
+def search_cells_close_to_endpoint(branch, search_mask, disk_mask, soma_inst_seg_mask, radius, im_shape):
     """
     Identify cells in the proximity of a neurite endpoint
 
@@ -115,14 +120,17 @@ def search_cells_close_to_endpoint(branch, search_mask, DISK_MASK, soma_inst_seg
     search_mask: ndarray
         2D array containing data with boolean type
         has the same size as the morphology image and searches for cells in the neurite endpoint proximity
-    DISK_MASK: ndarray
+    disk_mask: ndarray
         2D array containing data with boolean type
-        a square mask containing the RADIUS sized search disk
+        a square mask containing the radius sized search disk
     soma_inst_seg_mask: ndarray
         2D array containing data with int type
         Cell-body instance segmentation mask. Each individual cell has a different integer
         assigned to the pixels it appears at. Background value is zero.
-
+    radius: int
+        the radius of the disk_mask
+    im_shape: tuple
+        tuple of (image_height, image_width) in pixels
     Returns
     -------
     cells_close_to_endpoint: ndarray
@@ -141,7 +149,7 @@ def search_cells_close_to_endpoint(branch, search_mask, DISK_MASK, soma_inst_seg
     center = (int(end_point_x), int(end_point_y))
     # place the search disk in the right place in the search mask
     # in order to look for cells in the proximity of the endpoint in a fast way
-    search_mask, down, up, left, right = place_search_disk(center, search_mask, DISK_MASK)
+    search_mask, down, up, left, right = place_search_disk(center, search_mask, disk_mask, radius)
     # look for unique pixel values in the proximity of the endpoint
     # (each different pixel value in the cell body instance segmentation mask represents a different cell)
     cells_close_to_endpoint, counts = np.unique(soma_inst_seg_mask[search_mask], return_counts=True)
@@ -222,7 +230,7 @@ def add_skeleton_to_graph(graph, neurite_length_by_skeleton_id, connected_by_neu
     return graph, neurite_length_dict
 
 
-def create_graph(graph, soma_inst_seg_mask, skeleton_branch_data, centroids):
+def create_graph(graph, soma_inst_seg_mask, skeleton_branch_data, centroids, exp_config, im_shape):
     """
     Build a graph representation of the cell culture in the field of view of the DAPI & Morphology images.
 
@@ -239,7 +247,10 @@ def create_graph(graph, soma_inst_seg_mask, skeleton_branch_data, centroids):
     centroids: ndarray
         array containing data with int type
         containing [y,x] coordinates of nuclei centers
-
+    exp_config: Instance of class ExperimentConfig
+        Holds many tune-able parameters of the experiment (fields per well etc.)
+    im_shape: tuple
+        tuple of (image_height, image_width) in pixels
     Returns
     -------
     graph: Instance of class graph of NetworkX
@@ -267,7 +278,7 @@ def create_graph(graph, soma_inst_seg_mask, skeleton_branch_data, centroids):
 
         # iterate other each branch in the skeleton and search for cells in proximity of endpoints
         for branch in skeleton_endpoint_branches.itertuples(index=False):
-            cells_close_to_endpoint, counts = search_cells_close_to_endpoint(branch, search_mask, DISK_MASK, soma_inst_seg_mask)
+            cells_close_to_endpoint, counts = search_cells_close_to_endpoint(branch, search_mask, exp_config.DISK_MASK, soma_inst_seg_mask, exp_config.RADIUS, im_shape)
             if len(cells_close_to_endpoint) == 0:
                 continue
             # register only one cell per endpoint as connected - the cell with maximal overlap

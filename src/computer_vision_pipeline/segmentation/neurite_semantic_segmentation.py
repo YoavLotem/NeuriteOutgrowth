@@ -1,4 +1,3 @@
-from src.common import IMAGE_SHAPE
 import cv2
 import numpy as np
 
@@ -22,6 +21,7 @@ def apply_post_processing(binary_prd, thr=100):
         2D array containing data with boolean type
         Binary segmentation prediction after removing connected components smaller than threshold
     """
+    image_shape = binary_prd.shape
 
     # extract the connected components in the image and their respective statistics
     # the first component is the background so we remove it
@@ -30,7 +30,7 @@ def apply_post_processing(binary_prd, thr=100):
     nb_components = nb_components - 1
 
     # initializing a new binary prediction array and inserting it with the connected components larger than threshold
-    new_binary_prd = np.zeros(IMAGE_SHAPE)
+    new_binary_prd = np.zeros(image_shape)
     for i in range(0, nb_components):
         if sizes[i] >= thr:
             new_binary_prd[output == i + 1] = 1
@@ -64,7 +64,7 @@ def apply_pre_processing(morphology_image):
     return X
 
 
-def segment_neurites(morphology_image, neurite_model):
+def segment_neurites(morphology_image, neurite_seg_model):
     """
     Predicts a semantic segmentation mask of neurite's pixels in the
     input morphology image using the neurite segmentation model.
@@ -74,7 +74,7 @@ def segment_neurites(morphology_image, neurite_model):
     morphology_image: ndarray
         2D array containing data with float type
         Single channel grayscale morphology image
-    neurite_model: Keras model
+    neurite_seg_model: Keras model
         CNN for neurite semantic segmentation
 
     Returns
@@ -89,7 +89,7 @@ def segment_neurites(morphology_image, neurite_model):
 
     # using the neurite segmentation model for predicting the neurites pixels (probability for each pixel),
     # thresholding the probability map at 0.5 and applying post-processing
-    prd = neurite_model.predict(X, steps=1)
+    prd = neurite_seg_model.predict(X, steps=1)
     binary_prd = prd[0, :, :, 0] > 0.5
     segmentation_result = apply_post_processing(binary_prd)
     return segmentation_result

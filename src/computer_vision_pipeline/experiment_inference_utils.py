@@ -6,7 +6,7 @@ from skimage import morphology
 from skan import Skeleton, summarize
 from skimage.morphology import watershed
 from src.computer_vision_pipeline.utils import save_pickle, append_dict, sortWells, isSaved, byFieldNumber
-from src.computer_vision_pipeline.models.load_models import nucModel, neurite_model
+from src.computer_vision_pipeline.models.load_models import CVModels
 from src.computer_vision_pipeline.segmentation.foreground_segmentation import segment_foreground
 from src.computer_vision_pipeline.segmentation.nuclei_instance_segmentation import segment_nuclei
 from src.computer_vision_pipeline.segmentation.neurite_semantic_segmentation import segment_neurites
@@ -14,7 +14,7 @@ from src.computer_vision_pipeline.segmentation.backscatter import quntifyBacksca
 from src.computer_vision_pipeline.graph.graph_representation import create_graph
 
 
-def single_field_procedure(folder, fitc_image_name):
+def single_field_procedure(folder, fitc_image_name, cv_models, exp_config):
     """
     Perform all the procedures required in order to extract neurite outgrowth related data from a single field of view
     (that includes a DAPI & FITC images).
@@ -24,8 +24,12 @@ def single_field_procedure(folder, fitc_image_name):
     folder: str
         path to the folder that contains the field of view images
     fitc_image_name: str
-        image name of the form: "B - 02(fld 01 wv FITC - FITC).tif'"
-
+        image name of the form: "B - 02(fld 01 wv FITC - FITC).tif"
+    cv_models: instance of class CVModels
+        contains two deep learning models:
+        1) Neurite semantic segmentation model 2) Nuclei instance segmentation model
+    exp_config: Instance of class ExperimentConfig
+        Holds many tune-able parameters of the experiment (fields per well etc.)
     Returns
     -------
     graph: Instance of class graph of NetworkX
@@ -37,18 +41,22 @@ def single_field_procedure(folder, fitc_image_name):
 
     """
     # Load the DAPI & FITC images
-    fitc_image = cv2.imread(os.path.join(folder, fitc_image_name), 0)
-    dapi_image = cv2.imread(os.path.join(folder, fitc_image_name.replace('FITC', 'DAPI')))
+    fitc_image = cv2.imread(os.path.join(folder, fitc_image_name), 0)  # load as single channel
+    dapi_image = cv2.imread(os.path.join(folder, fitc_image_name.replace('FITC', 'DAPI'))) # load as 3 channels (what Mask RCNN model expects)
+
+    # make sure they have the same height and width dimensions
+    assert fitc_image.shape == dapi_image.shape[:2], "DAPI and FITC images have different dimensions"
+    im_shape = fitc_image.shape
 
     # perform foreground segmentation - which pixels in the FITC image belongs to a cell
     cells_foreground_mask = segment_foreground(fitc_image)
 
     # perform nuclei instance segmentation and extract each individual nucleus' pixels location,
     # center location and fraction of dead cells
-    nuclei_instance_segmentation_mask, centroids, apoptosis_fraction = segment_nuclei(dapi_image, cells_foreground_mask, nucModel)
+    nuclei_instance_segmentation_mask, centroids, apoptosis_fraction = segment_nuclei(dapi_image, cells_foreground_mask, cv_models.nuclei_maskrcnn)
 
     # perform neurite semantic segmentation - which pixels in the FITC image belongs to a neurite
-    neurite_mask = segment_neurites(fitc_image, neurite_model)
+    neurite_mask = segment_neurites(fitc_image, cv_models.neurite_seg_model)
 
     # apply the watershed algorithm to achieve cell instance segmentation
     cell_instance_segmentation_mask = watershed(-1*fitc_image, markers=nuclei_instance_segmentation_mask, watershed_line=True, mask=cells_foreground_mask)
@@ -79,7 +87,7 @@ def single_field_procedure(folder, fitc_image_name):
     skeleton_branch_data = summarize(Skeleton(skeletonized_neurite_mask))
 
     # create a graph representation of the cells and extract a cell wise neurite length dictionary
-    graph, neurite_length_dict = create_graph(graph, cell_instance_segmentation_mask, skeleton_branch_data, centroids)
+    graph, neurite_length_dict = create_graph(graph, cell_instance_segmentation_mask, skeleton_branch_data, centroids, exp_config, im_shape)
 
     # return all the extracted information
     number_of_cells = len(neurite_length_dict)
@@ -89,7 +97,7 @@ def single_field_procedure(folder, fitc_image_name):
     return graph, nodes_dict, data
 
 
-def extract_data_from_plate_images(folder, saving_folder, fields_per_well=20):
+def extract_data_from_plate_images(folder, saving_folder, exp_config):
     """
     Extracts and saves neurite outgrowth related data from all the images in a folder that
     contain images from a single plate.
@@ -100,10 +108,14 @@ def extract_data_from_plate_images(folder, saving_folder, fields_per_well=20):
         Path to a folder that contains all the plate's images
     saving_folder: str
         Path specifying where to save the results
-    fields_per_well: int, default=20
-        Number of fields in each well.
+    exp_config: Instance of class ExperimentConfig
+        Holds many tune-able parameters of the experiment (image size etc.)
 
     """
+
+    # setting up computer vision models - nuclei instance segmentation model and neurite semantic segmentation model
+    cv_models = CVModels(exp_config.NUCLEI_MASK_RCNN_WEIGHTS_PATH, exp_config.NEURITE_SEGMENTATION_MODEL_PATH)
+
     # create a path to save a txt file that will hold (most of) the extracted plate data
     txt_saving_path = os.path.join(saving_folder, os.path.basename(os.path.normpath(folder)) + '.txt')
 
@@ -138,14 +150,17 @@ def extract_data_from_plate_images(folder, saving_folder, fields_per_well=20):
         fields_of_current_well.sort(key=byFieldNumber)
 
         # make sure the well has the specified number of fields for each well
-        assert len(fields_of_current_well) == fields_per_well, 'Number of fields in well ' + well_name + ' is ' + str(len(fields_of_current_well)) + " (should have been " + str(fields_per_well) + ")"
+        assert len(fields_of_current_well) == exp_config.FIELDS_PER_WELL, 'Number of fields in well ' + well_name + ' is ' + str(len(fields_of_current_well)) + " (should have been " + str(exp_config.FIELDS_PER_WELL) + ")"
 
         for fitc_image_name in fields_of_current_well:
-            # extract neurite outgrowth information from each field of view
-            graph, nodes_list, data = single_field_procedure(folder, fitc_image_name)
-            graph_representation_dictionary[well_name].append([graph, nodes_list])
-            for key in list(well_data[well_name].keys()):
-                well_data[well_name][key].append(data[key])
+            try:
+                # extract neurite outgrowth information from each field of view
+                graph, nodes_list, data = single_field_procedure(folder, fitc_image_name, cv_models, exp_config)
+                graph_representation_dictionary[well_name].append([graph, nodes_list])
+                for key in list(well_data[well_name].keys()):
+                    well_data[well_name][key].append(data[key])
+            except:
+                print("something went wrong in image name ", fitc_image_name)
 
         # save the well-level information:
         # 1) add the well data to the plate txt file
