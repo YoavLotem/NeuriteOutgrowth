@@ -109,7 +109,7 @@ def extract_data_from_plate_images(folder, saving_folder, exp_config):
     saving_folder: str
         Path specifying where to save the results
     exp_config: Instance of class ExperimentConfig
-        Holds many tune-able parameters of the experiment (image size etc.)
+        Holds many tune-able parameters of the experiment (number of fields in well etc.)
 
     """
 

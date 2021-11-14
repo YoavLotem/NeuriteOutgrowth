@@ -3,6 +3,7 @@ import os
 
 class ExperimentConfig:
 
+
     # number of fields of view in each well - pairs of images (DAPI and FITC) for each field
     FIELDS_PER_WELL = 20
 
