@@ -61,7 +61,7 @@ def single_field_procedure(folder, fitc_image_name, cv_models, exp_config):
     # apply the watershed algorithm to achieve cell instance segmentation
     cell_instance_segmentation_mask = watershed(-1*fitc_image, markers=nuclei_instance_segmentation_mask, watershed_line=True, mask=cells_foreground_mask)
 
-    # skeletonize the(binary)neurite mask
+    # skeletonize the (binary) neurite mask
     skeletonized_neurite_mask = morphology.skeletonize(neurite_mask)
 
     # sum the nuerite pixels in the skeletonized neurite mask as an estimation of the total neurite length in the image

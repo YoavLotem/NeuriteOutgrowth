@@ -149,7 +149,7 @@ def search_cells_close_to_endpoint(branch, search_mask, disk_mask, soma_inst_seg
     center = (int(end_point_x), int(end_point_y))
     # place the search disk in the right place in the search mask
     # in order to look for cells in the proximity of the endpoint in a fast way
-    search_mask, down, up, left, right = place_search_disk(center, search_mask, disk_mask, radius)
+    search_mask, down, up, left, right = place_search_disk(center, search_mask, disk_mask, radius, im_shape)
     # look for unique pixel values in the proximity of the endpoint
     # (each different pixel value in the cell body instance segmentation mask represents a different cell)
     cells_close_to_endpoint, counts = np.unique(soma_inst_seg_mask[search_mask], return_counts=True)
