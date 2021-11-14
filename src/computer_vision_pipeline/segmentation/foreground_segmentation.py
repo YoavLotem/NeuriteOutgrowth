@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 
 
-def segment_foreground(fitc_image, image_height, image_width):
+def segment_foreground(fitc_image):
     """
     Predicts a semantic segmentation mask of the cells forground using a threshold selected as
     the mean of two Gaussian Mixture compopnents fitted to the background and foreground pixels intensity respectively.

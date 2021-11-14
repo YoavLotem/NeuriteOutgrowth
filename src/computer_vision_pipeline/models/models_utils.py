@@ -45,7 +45,7 @@ class BowlConfig(Config):
     PRE_NMS_LIMIT = 6000
 
     USE_MINI_MASK = True
-    DETECTION_MAX_INSTANCES = 5000
+    DETECTION_MAX_INSTANCES = 1000
 
 ### Live Neutire segmentation Model Utils ###
 #############################################
