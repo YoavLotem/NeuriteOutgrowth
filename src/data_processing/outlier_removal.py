@@ -1,11 +1,10 @@
 from sklearn.linear_model import RANSACRegressor
 from scipy.stats import norm
 from itertools import compress
-from src.common import *
 from sklearn.cluster import DBSCAN
+import numpy as np
 
-
-def detect_outliers_with_thresholds(well_data, graph_per_field):
+def detect_outliers_with_thresholds(well_data, graph_per_field, exp_config):
     """
     Detect fields that do not pass threshold regarding the number of cells, levels of apoptosis,
     and density of their cells.
@@ -17,7 +16,8 @@ def detect_outliers_with_thresholds(well_data, graph_per_field):
     graph_per_field: list
         A list of lists containing for each field in the well a list containing an instance of class graph of NetworkX
         and a dictionary containing the graph's nodes information
-
+    exp_config: Instance of class ExperimentConfig
+        Holds many tune-able parameters of the experiment (thresholds for outlier removal etc.)
     Returns
     -------
     inlier_mask: ndarray
@@ -38,22 +38,22 @@ def detect_outliers_with_thresholds(well_data, graph_per_field):
     for idx, graph_and_node_list in enumerate(graph_per_field):
         node_list = graph_and_node_list[1]
         num_cells = len(node_list)
-        if num_cells < MIN_CELL_NUM:
+        if num_cells < exp_config.MIN_CELL_NUM:
             outlier_dict["Number of Fields With Low Cell Count"] += 1
             continue
-        if num_cells > MAX_CELL_NUM:
+        if num_cells > exp_config.MAX_CELL_NUM:
             outlier_dict["Number of Fields With High Cell Count"] += 1
             continue
-        if well_data["Apoptosis Fraction"][idx] > MAX_APOP_RATIO:
+        if well_data["Apoptosis Fraction"][idx] > exp_config.MAX_APOP_RATIO:
             outlier_dict["Number of Fields With Apoptosis"] += 1
             continue
 
         # using the DBSCAN algorithm's core samples as highly dense cells (check algorithm for details)
         cell_coordinates = np.array(list(node_list.values()))
-        db = DBSCAN(eps=D_EPS, min_samples=MIN_SAMPLES)
+        db = DBSCAN(eps=exp_config.D_EPS, min_samples=exp_config.MIN_SAMPLES)
         fitted_db = db.fit(cell_coordinates)
         density_feat = len(fitted_db.core_sample_indices_) / len(cell_coordinates)
-        if density_feat > MAX_HIGH_DENSITY_RATIO:
+        if density_feat > exp_config.MAX_HIGH_DENSITY_RATIO:
             outlier_dict["Number of Fields With Clustered Cells"] += 1
             continue
 
@@ -62,7 +62,7 @@ def detect_outliers_with_thresholds(well_data, graph_per_field):
     return inlier_mask, outlier_dict
 
 
-def detect_outliers_unsupervised(well_data):
+def detect_outliers_unsupervised(well_data, exp_config):
     """
     Detect fields with extreme values compared to the other fields in the well using an unsupervised approach based on
     the RANSAC regressor.
@@ -71,7 +71,8 @@ def detect_outliers_unsupervised(well_data):
     ----------
     well_data: dict
         A dictionary containing a well's raw data from the computer vision pipeline
-
+    exp_config: Instance of class ExperimentConfig
+        Holds many tune-able parameters of the experiment (thresholds for outlier removal etc.)
     Returns
     -------
     inlier_mask: ndarray
@@ -84,7 +85,7 @@ def detect_outliers_unsupervised(well_data):
     y = normalized_neurite_length.reshape(-1, 1)
     nnl_std = np.std(y)
     # fit a RANSAC regressor using 1 NNL standard deviation as residual threshold
-    ransac = RANSACRegressor(residual_threshold=nnl_std, min_samples=RANSAC_MIN_SAMPLES, random_state=42)
+    ransac = RANSACRegressor(residual_threshold=nnl_std, min_samples=exp_config.RANSAC_MIN_SAMPLES, random_state=42)
     ransac.fit(x, y)
     # calculate the residual distance between the predicted NNL by the RANSAC regressor (prd) and the observed NNL (y)
     prd = ransac.predict(x)
@@ -94,7 +95,7 @@ def detect_outliers_unsupervised(well_data):
     residual_distance_normal_distribution = norm(mu, std)
     # inliers are the samples that have cdf > threshold -> meaning their values are not extremely far away than the
     # residual line calculated by the RANSAC regressor
-    inlier_mask = residual_distance_normal_distribution.cdf(residual_distance) > PROBABILITY_THRESHOLD
+    inlier_mask = residual_distance_normal_distribution.cdf(residual_distance) > exp_config.PROBABILITY_THRESHOLD
     inlier_mask = inlier_mask[:, 0]
     return inlier_mask
 
@@ -126,7 +127,7 @@ def filter_data(graph_per_field, well_data, inlier_mask):
     return graph_per_field_filtered, well_data_filtered
 
 
-def perform_full_outlier_removal(well_data, graph_per_field):
+def perform_full_outlier_removal(well_data, graph_per_field, exp_config):
     """
     Performs the full outlier removal process, which includes detecting and removing outliers using constant thresholds
     and using an unsupervised approach of removing fields with extreme values.
@@ -138,7 +139,8 @@ def perform_full_outlier_removal(well_data, graph_per_field):
     graph_per_field: list
         A list of lists containing for each field in the well a list containing an instance of class graph of NetworkX
         and a dictionary containing the graph's nodes information
-
+    exp_config: Instance of class ExperimentConfig
+        Holds many tune-able parameters of the experiment (thresholds for outlier removal etc.)
     Returns
     -------
     well data: dict
@@ -150,19 +152,19 @@ def perform_full_outlier_removal(well_data, graph_per_field):
 
     """
     # detect and remove outliers with constant thresholds
-    inlier_mask, outlier_dict = detect_outliers_with_thresholds(well_data, graph_per_field)
+    inlier_mask, outlier_dict = detect_outliers_with_thresholds(well_data, graph_per_field, exp_config)
     graph_per_field, well_data = filter_data(graph_per_field, well_data, inlier_mask)
 
     # if the number of valid fields (inliers) is smaller than threshold than we do not continue with outlier removal
     # and the well's results should be considered invalid
-    if np.sum(inlier_mask) < MIN_VALID_FIELDS:
+    if np.sum(inlier_mask) < exp_config.MIN_VALID_FIELDS:
         outlier_dict["Valid Fields"] = np.sum(inlier_mask)
         outlier_dict["Number of Unsupervised Outlier Fields"] = 0
         outlier_dict["Apoptosis Ratio After Outlier Removal"] = round(np.mean(well_data["Apoptosis Fraction"]), 2)
         return well_data, graph_per_field, outlier_dict
 
     # detect and remove outliers compared to the other fields' values
-    inlier_mask_unsupervised = detect_outliers_unsupervised(well_data)
+    inlier_mask_unsupervised = detect_outliers_unsupervised(well_data, exp_config)
     graph_per_field, well_data = filter_data(graph_per_field, well_data, inlier_mask_unsupervised)
     # the number of outliers detected in this stage is the difference between the inliers in the previous stage
     # and the inliers after the current stage

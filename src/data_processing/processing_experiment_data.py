@@ -1,10 +1,9 @@
 import ast
 from src.data_processing.outlier_removal import perform_full_outlier_removal
 from src.data_processing.feature_extraction import *
-from src.common import EPS, MIN_VALID_FIELDS
 from src.data_processing.utils import *
 
-def calculate_well_features(graph_per_field, well_data, connection_pdf, thr_expected_conn):
+def calculate_well_features(graph_per_field, well_data, connection_pdf, thr_expected_conn, exp_config):
     """
     Calculate the neurite outgrowth features from the well data.
 
@@ -21,7 +20,8 @@ def calculate_well_features(graph_per_field, well_data, connection_pdf, thr_expe
     thr_expected_conn:float
         threshold for expected connections - cells with values lower than this are considered "isolated" in the
         calculation of "expected vs real connection ratio" feature.
-
+    exp_config: Instance of class ExperimentConfig
+        Holds many tune-able parameters of the experiment (thresholds for outlier removal etc.)
     Returns
     -------
     feature_dict: dict
@@ -53,7 +53,7 @@ def calculate_well_features(graph_per_field, well_data, connection_pdf, thr_expe
 
         # calculate the Expected VS Real Connection Ratio feature for current field
         per_cell_num_connections = np.array([d for n, d in graph.degree()])
-        per_cell_expected_num_connections = calculate_expected_number_of_connections(node_dict, connection_pdf)
+        per_cell_expected_num_connections = calculate_expected_number_of_connections(node_dict, connection_pdf, exp_config)
         feature_dict["Expected VS Real Connection Ratio"] += list(per_cell_num_connections / (per_cell_expected_num_connections + 0.0001))
 
         # calculate the Disconnected With Neurites feature for current field
@@ -76,7 +76,7 @@ def calculate_well_features(graph_per_field, well_data, connection_pdf, thr_expe
     # connections made (edges) across this distance range (via neurites) to the amount of pairs of cells that are
     # in this distance range from one another (possible number of connections)
     for feature_name, dst in zip(connection_prob_features_names, distances):
-        feature_dict[feature_name] = edges_count_by_distance[dst] / (cell_pairs_count_by_distance[dst] + EPS)
+        feature_dict[feature_name] = edges_count_by_distance[dst] / (cell_pairs_count_by_distance[dst] + exp_config.EPS)
 
     # calculate the rest of the well wise features as the mean of the cell or field values
     for feature_name in feature_dict.keys():
@@ -86,7 +86,7 @@ def calculate_well_features(graph_per_field, well_data, connection_pdf, thr_expe
     return feature_dict
 
 
-def calculate_connection_pdf(folder_path, negative_ref_wells):
+def calculate_connection_pdf(folder_path, negative_ref_wells, exp_config):
     """
     Calculate the connection probability density function - the probability of connection over multiple distance ranges,
     (25 [pixels] bins covering the 0-1000 [pixels] range) based on the negative reference wells.
@@ -98,7 +98,8 @@ def calculate_connection_pdf(folder_path, negative_ref_wells):
         pickle files for each well and one txt file.
     negative_ref_wells: list
         list containing the names (strings) of negative reference wells (disease model)
-
+    exp_config: Instance of class ExperimentConfig
+        Holds many tune-able parameters of the experiment (thresholds for outlier removal etc.)
     Returns
     -------
     connection_pdf: ndarray
@@ -118,9 +119,9 @@ def calculate_connection_pdf(folder_path, negative_ref_wells):
         # extract this well's data (dict) from the computer vision pipeline txt file
         well_data = ast.literal_eval(well_data_as_txt)[well_name]
         # perform outlier removal
-        well_data, graph_per_field, outlier_dict = perform_full_outlier_removal(well_data, graph_per_field)
+        well_data, graph_per_field, outlier_dict = perform_full_outlier_removal(well_data, graph_per_field, exp_config)
         # check that there are enough valid fields
-        if outlier_dict["Valid Fields"] < MIN_VALID_FIELDS:
+        if outlier_dict["Valid Fields"] < exp_config.MIN_VALID_FIELDS:
             continue
 
         # iterate over the graph representations of fields from the current reference well and
@@ -129,7 +130,7 @@ def calculate_connection_pdf(folder_path, negative_ref_wells):
             graph = graph_and_node_dict[0]
             node_dict = graph_and_node_dict[1]
             edges_length_list = [weight for (n1, n2, weight) in graph.edges.data("weight")]
-            connection_pdf_field = calculate_connection_pdf_for_a_single_field(node_dict, np.array(edges_length_list))
+            connection_pdf_field = calculate_connection_pdf_for_a_single_field(node_dict, np.array(edges_length_list), exp_config)
             connection_prob_reference.append(list(connection_pdf_field))
 
     # connection pdf is defined as the mean (per distance) connection probability across the negative group
@@ -137,7 +138,7 @@ def calculate_connection_pdf(folder_path, negative_ref_wells):
     return connection_pdf
 
 
-def calculate_isolated_cells_threshold(folder_path, negative_ref_wells, connection_pdf):
+def calculate_isolated_cells_threshold(folder_path, negative_ref_wells, connection_pdf, exp_config):
     """
     Calculate the threshold for isolated cells by calculating the distribution of expected connections (per cell) of the
     negative reference, based on the connection probability density function. Threshold is calculated as the
@@ -153,7 +154,8 @@ def calculate_isolated_cells_threshold(folder_path, negative_ref_wells, connecti
     connection_pdf: ndarray
         1d ndarray containing the discrete connection probability density function for each distance
         (0-1000 pixels in 25 pixels bins)
-
+    exp_config: Instance of class ExperimentConfig
+        Holds many tune-able parameters of the experiment (thresholds for outlier removal etc.)
     Returns
     -------
     threshold_expected_connection: float
@@ -172,22 +174,22 @@ def calculate_isolated_cells_threshold(folder_path, negative_ref_wells, connecti
         # extract this well's data (dict) from the computer vision pipeline txt file
         well_data = ast.literal_eval(well_data_as_txt)[well_name]
         # perform outlier removal
-        well_data, graph_per_field, outlier_dict = perform_full_outlier_removal(well_data, graph_per_field)
+        well_data, graph_per_field, outlier_dict = perform_full_outlier_removal(well_data, graph_per_field, exp_config)
         # check that there are enough valid fields
-        if outlier_dict["Valid Fields"] < MIN_VALID_FIELDS:
+        if outlier_dict["Valid Fields"] < exp_config.MIN_VALID_FIELDS:
             continue
 
         # calculate the expected number of connections for each cell in each field in the well
         for idx, graph_and_node_dict in enumerate(graph_per_field):
             node_dict = graph_and_node_dict[1]
-            expected_conn += list(calculate_expected_number_of_connections(node_dict, connection_pdf))
+            expected_conn += list(calculate_expected_number_of_connections(node_dict, connection_pdf, exp_config))
 
     # set the threshold for an isolated cell at the 10th percentile
     threshold_expected_connection = np.percentile(expected_conn, 20)
     return threshold_expected_connection
 
 
-def calculate_plate_outgrowth_measures(folder_path, connection_pdf, thr_expected_conn):
+def calculate_plate_outgrowth_measures(folder_path, connection_pdf, thr_expected_conn, exp_config):
     """
     Calculates neurite-outgrowth and toxicity measures
     for each well from the data extracted in the computer vision pipeline.
@@ -203,7 +205,8 @@ def calculate_plate_outgrowth_measures(folder_path, connection_pdf, thr_expected
     thr_expected_conn: float
         threshold for expected connections - cells with values lower than this are considered "isolated" in the
         calculation of "expected vs real connection ratio" feature.
-
+    exp_config: Instance of class ExperimentConfig
+        Holds many tune-able parameters of the experiment (thresholds for outlier removal etc.)
     Returns
     -------
     plate_processed_data: dict
@@ -219,19 +222,19 @@ def calculate_plate_outgrowth_measures(folder_path, connection_pdf, thr_expected
         # extract this well's data (dict) from the computer vision pipeline txt file
         well_data = ast.literal_eval(well_data_as_txt)[well_name]
         # perform outlier removal
-        well_data, graph_per_field, outlier_dict = perform_full_outlier_removal(well_data, graph_per_field)
+        well_data, graph_per_field, outlier_dict = perform_full_outlier_removal(well_data, graph_per_field, exp_config)
         # check that there are enough valid fields
-        if outlier_dict["Valid Fields"] < MIN_VALID_FIELDS:
+        if outlier_dict["Valid Fields"] < exp_config.MIN_VALID_FIELDS:
             plate_processed_data[well_name] = {"outlier_dictionary": outlier_dict}
             continue
         # calculate the neurite outgrowth features
-        well_features = calculate_well_features(graph_per_field, well_data, connection_pdf, thr_expected_conn)
+        well_features = calculate_well_features(graph_per_field, well_data, connection_pdf, thr_expected_conn, exp_config)
         well_features["outlier_dictionary"] = outlier_dict
         plate_processed_data[well_name] = well_features
     return plate_processed_data
 
 
-def process_plate_data(folder_path, negative_ref_wells):
+def process_plate_data(folder_path, negative_ref_wells, exp_config):
     """
     Process plate data extracted from the computer vision pipeline. processing includes extracting
     a connection probability function and thresholds from the negative reference wells followed by the
@@ -244,15 +247,16 @@ def process_plate_data(folder_path, negative_ref_wells):
         pickle files for each well and one txt file.
     negative_ref_wells: list
         list containing the names (strings) of negative reference wells (disease model)
-
+    exp_config: Instance of class ExperimentConfig
+        Holds many tune-able parameters of the experiment (thresholds for outlier removal etc.)
     Returns
     -------
     plate_processed_data: dict
         dictionary containing each wells neurite outgrowth toxicity and outlier information
     """
-    connection_pdf = calculate_connection_pdf(folder_path, negative_ref_wells)
+    connection_pdf = calculate_connection_pdf(folder_path, negative_ref_wells, exp_config)
     # calculate expected connection thresholds
-    thr_expected_connection = calculate_isolated_cells_threshold(folder_path, negative_ref_wells, connection_pdf)
+    thr_expected_connection = calculate_isolated_cells_threshold(folder_path, negative_ref_wells, connection_pdf, exp_config)
     # extract neurite outgrowth measures and outlier information from each well in the plate
-    plate_processed_data = calculate_plate_outgrowth_measures(folder_path, connection_pdf, thr_expected_connection)
+    plate_processed_data = calculate_plate_outgrowth_measures(folder_path, connection_pdf, thr_expected_connection, exp_config)
     return plate_processed_data

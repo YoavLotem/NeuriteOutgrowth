@@ -1,9 +1,8 @@
 import numpy as np
 import scipy
-from src.common import MIN_DISTANCE, MAX_DISTANCE, BIN_SIZE
 
 
-def calculate_expected_number_of_connections(node_dict, connection_pdf):
+def calculate_expected_number_of_connections(node_dict, connection_pdf, exp_config):
     """
     Calculate the expected number of connections for each cell in a field given the cell's location and the connection
     probability density function.
@@ -15,7 +14,8 @@ def calculate_expected_number_of_connections(node_dict, connection_pdf):
     connection_pdf: ndarray
         1d ndarray containing the discrete connection probability density function for each distance
         (0-1000 pixels in 25 pixels bins)
-
+    exp_config: Instance of class ExperimentConfig
+        Holds many tune-able parameters of the experiment (thresholds for outlier removal etc.)
     Returns
     -------
     per_cell_expected_num_connections: ndarray
@@ -31,13 +31,13 @@ def calculate_expected_number_of_connections(node_dict, connection_pdf):
     per_cell_expected_num_connections = np.zeros(len(node_arr))
 
     # initializing an array with the discrete distances of the connection PDF
-    distances_arr = np.arange(MIN_DISTANCE, MAX_DISTANCE, BIN_SIZE)
+    distances_arr = np.arange(exp_config.MIN_DISTANCE, exp_config.MAX_DISTANCE, exp_config.BIN_SIZE)
 
     # iterating over the distances and indices of bins in the connection pdf
     for index_of_bin_in_pdf, distance in enumerate(distances_arr):
 
         # checking for each cell (axis=1) how many cells are within a distance range from it.
-        neighbours_in_distance_range = np.sum(np.logical_and(pairwise_distances_squareform < (distance + BIN_SIZE),
+        neighbours_in_distance_range = np.sum(np.logical_and(pairwise_distances_squareform < (distance + exp_config.BIN_SIZE),
                                                        pairwise_distances_squareform >= distance), axis=1)
 
         # if the distance range is 0-25 than we need to deduct the cell itself from the count of cells in its proximity
@@ -164,7 +164,7 @@ def calculate_disconnected_with_neurites(num_connections, neurite_distribution, 
 
 
 
-def calculate_connection_pdf_for_a_single_field(node_dict, edge_lengths):
+def calculate_connection_pdf_for_a_single_field(node_dict, edge_lengths, exp_config):
     """
     Calulculates the probability of connection for a single field over multiple of distance ranges
     (25 [pixels] bins covering the 0-1000 [pixels] range)
@@ -175,7 +175,8 @@ def calculate_connection_pdf_for_a_single_field(node_dict, edge_lengths):
         A dictionary that contain the field's nuclei centroids X,Y coordinates (which are the graph's nodes)
     edge_lengths: ndarray
        ndarray containing the length distribution of connections via neurites in a field
-
+    exp_config: Instance of class ExperimentConfig
+        Holds many tune-able parameters of the experiment (thresholds for outlier removal etc.)
     Returns
     -------
     connection_pdf_field: ndarray
@@ -185,18 +186,18 @@ def calculate_connection_pdf_for_a_single_field(node_dict, edge_lengths):
     node_arr = np.array(list(node_dict.values()))
     pairwise_distances_condensed = scipy.spatial.distance.pdist(node_arr)
     # bins for the connection PDF
-    distances_arr = np.arange(MIN_DISTANCE, MAX_DISTANCE, BIN_SIZE)
+    distances_arr = np.arange(exp_config.MIN_DISTANCE, exp_config.MAX_DISTANCE, exp_config.BIN_SIZE)
     # array to keep probability values from the current field
     connection_pdf_field = np.zeros(len(distances_arr))
 
     for idx, distance in enumerate(distances_arr):
         # count how many cell pairs exists within the distance range of distance - distance + BIN_SIZE
         cell_pairs_in_distance_range = np.sum(np.logical_and(pairwise_distances_condensed >= distance,
-                                     pairwise_distances_condensed < (distance + BIN_SIZE)))
+                                     pairwise_distances_condensed < (distance + exp_config.BIN_SIZE)))
 
         # count how many connected cell pairs exists within the distance range of distance - distance + BIN_SIZE
         connected_cell_pairs_in_distance_range = np.sum(np.logical_and(edge_lengths >= distance,
-                                                                       edge_lengths < (distance + BIN_SIZE)))
+                                                                       edge_lengths < (distance + exp_config.BIN_SIZE)))
 
 
         if cell_pairs_in_distance_range == 0:
