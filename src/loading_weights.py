@@ -2,7 +2,7 @@ import urllib.request
 import shutil
 
 
-mask_rcnn_weights = "https://drive.google.com/file/d/1q6ZWGQewLxw6ZIMBpBmT7FPJ-MMbRsCk/view?usp=sharing"
+mask_rcnn_weights = "https://drive.google.com/file/d/1sX5u0dEBvA8Y8z8UObXsty-CE_TjWNKH/view?usp=sharing"
 
 def download_trained_weights(local_weights_path, verbose=1):
     """
