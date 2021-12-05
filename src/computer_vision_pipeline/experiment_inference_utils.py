@@ -4,7 +4,7 @@ import os
 import numpy as np
 from skimage import morphology
 from skan import Skeleton, summarize
-from skimage.morphology import watershed
+from skimage.segmentation import watershed
 from src.computer_vision_pipeline.utils import save_pickle, append_dict, sortWells, isSaved, byFieldNumber
 from src.computer_vision_pipeline.models.load_models import CVModels
 from src.computer_vision_pipeline.segmentation.foreground_segmentation import segment_foreground
@@ -12,7 +12,7 @@ from src.computer_vision_pipeline.segmentation.nuclei_instance_segmentation impo
 from src.computer_vision_pipeline.segmentation.neurite_semantic_segmentation import segment_neurites
 from src.computer_vision_pipeline.segmentation.backscatter import quntifyBackscatter
 from src.computer_vision_pipeline.graph.graph_representation import create_graph
-
+from tqdm import tqdm
 
 def single_field_procedure(folder, fitc_image_name, cv_models, exp_config):
     """
@@ -129,7 +129,7 @@ def extract_data_from_plate_images(folder, saving_folder, exp_config):
     # allows running multiple times and pick up the run from the last saved well
     first_iter = True
 
-    for well_name in unique_well_names:
+    for well_name in tqdm(unique_well_names, desc='wells processed', mininterval=5, unit="wells"):
         # initiate dictionaries to hold the information of each well
         well_data = {well_name: {"Cell Number": [], "Neurite pixels": [], "Apoptosis Fraction": [], "Backscatter": [], "Neurite Distribution": []}}
         graph_representation_dictionary = {well_name: []}
@@ -160,7 +160,7 @@ def extract_data_from_plate_images(folder, saving_folder, exp_config):
                 for key in list(well_data[well_name].keys()):
                     well_data[well_name][key].append(data[key])
             except:
-                print("something went wrong in image name ", fitc_image_name)
+                print("something went wrong in image name " + fitc_image_name)
 
         # save the well-level information:
         # 1) add the well data to the plate txt file

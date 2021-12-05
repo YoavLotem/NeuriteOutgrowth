@@ -56,7 +56,7 @@ class ExperimentConfig:
     MIN_SAMPLES = 10
 
     # unsupervised outlier removal constants:
-    # straight line will be calculated using Random sample consensus (RANSAC) with
+    # straight line will be calculated using Random Sample Consensus (RANSAC) algorithm
     # number of samples randomly selected equal to RANSAC_MIN_SAMPLES.
     RANSAC_MIN_SAMPLES = 5
     assert RANSAC_MIN_SAMPLES <= MIN_VALID_FIELDS, "The minimal number of valid fields has to be equal or larger" \
