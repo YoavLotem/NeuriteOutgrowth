@@ -65,11 +65,12 @@ def calculate_well_features(graph_per_field, well_data, connection_pdf, thr_expe
         well_edge_length_distribution += [weight for (n1, n2, weight) in graph.edges.data("weight")]
 
         # update the count of cell pairs in specific distance ranges from each other
-        for cell_pairs_count, dst in zip(count_pairs(node_dict), distances):
+        for cell_pairs_count, dst in zip(count_pairs(node_dict, exp_config), distances):
             cell_pairs_count_by_distance[dst] += cell_pairs_count
 
-    # count the edges in specific distance ranges
-    for edges_count, dst in zip(count_connections(np.array(well_edge_length_distribution)), distances):
+     # count the edges in specific distance ranges
+    well_edge_length_distribution_arr = np.array(well_edge_length_distribution)
+    for edges_count, dst in zip(count_connections(well_edge_length_distribution_arr, exp_config), distances):
         edges_count_by_distance[dst] = edges_count
 
     # calculate the well's probability of connection in a specific distance range as the ratio between the number of

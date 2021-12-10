@@ -2,13 +2,15 @@ import numpy as np
 import os
 
 class ExperimentConfig:
-
+    """
+    Configuration Parameters for experiments
+    """
 
     # number of fields of view in each well - pairs of images (DAPI and FITC) for each field
     FIELDS_PER_WELL = 20
 
     # smoothing constant
-    EPS = 0
+    EPS = 0.00000001
 
     # Moedl paths:
     # -------------------------------------------------------------------------
@@ -65,6 +67,16 @@ class ExperimentConfig:
     # fields with residual distance far away will have a low probability to fit the RANSAC line
     # fields with probability lower than threshold will be considered un-valid.
     PROBABILITY_THRESHOLD = 0.05
+
+    # Connection Probability
+    # ----------------------
+
+    # connection distances
+    SHORT_DISTANCE = 100
+    INTERMEDIATE_DISTANCE = 300
+    LONG_DISTANCE = 400
+
+
 
     # connection probability over a distance (connection_pdf) constants:
     # minimal and maximal distances for calculating the probability of connection

@@ -7,6 +7,17 @@ from keras.layers import Input
 
 
 class CVModels:
+    """
+    A class used to represent the computer vision models used in the data processing.
+
+    Attributes:
+    -----------
+    mask_rcnn_weights_path: str
+        path to Mask RCNN model weights (h5 file)
+    neurite_segmentation_model_path: str
+        path to neurite segmentation model (h5 file)
+
+    """
     def __init__(self, mask_rcnn_weights_path, neurite_segmentation_model_path):
         self.mask_rcnn_weights_path = mask_rcnn_weights_path
         self.neurite_segmentation_model_path = neurite_segmentation_model_path

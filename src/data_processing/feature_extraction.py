@@ -53,66 +53,75 @@ def calculate_expected_number_of_connections(node_dict, connection_pdf, exp_conf
     return per_cell_expected_num_connections
 
 
-def count_pairs(node_dict):
+def count_pairs(node_dict, exp_config):
     """
     Counts (for a field) how many pairs of cells are in each of 4 specific distance ranges [pixels]
-    (0-100, 100-300, 300-400, 300-inf).
+
 
     Parameters
     ----------
     node_dict: dict
         A dictionary that contain the field's nuclei centroids X,Y coordinates (which are the graph's nodes)
+    exp_config: Instance of class ExperimentConfig
+        Holds many tune-able parameters of the experiment (connection distances etc.)
 
     Returns
     -------
     num_short_distance_pairs: int
-        number of cell pairs in a 0-100 pixels distance
+        number of cell pairs in a 0-SHORT_DISTANCE pixels distance
     num_medium_distance_pairs: int
-        number of cell pairs in a 100-300 pixels distance
+        number of cell pairs in a SHORT_DISTANCE-INTERMEDIATE_DISTANCE pixels distance
     num_long_distance_pairs: int
-        number of cell pairs in a 300-400 pixels distance
+        number of cell pairs in a INTERMEDIATE_DISTANCE-LONG_DISTANCE pixels distance
     num_very_long_distance_pairs: int
-        number of cell pairs in a 300 - inf pixels distance
+        number of cell pairs in a INTERMEDIATE_DISTANCE - inf pixels distance
     """
     node_arr = np.array(list(node_dict.values()))
     pairwise_distances_condensed = scipy.spatial.distance.pdist(node_arr)
-    num_short_distance_pairs = np.sum(pairwise_distances_condensed <= 100)
+    num_short_distance_pairs = np.sum(pairwise_distances_condensed <= exp_config.SHORT_DISTANCE)
 
-    num_medium_distance_pairs = np.sum(np.logical_and(pairwise_distances_condensed > 100,
-                                                      pairwise_distances_condensed <= 300))
+    num_medium_distance_pairs = np.sum(np.logical_and(pairwise_distances_condensed > exp_config.SHORT_DISTANCE,
+                                                      pairwise_distances_condensed <= exp_config.INTERMEDIATE_DISTANCE))
 
-    num_long_distance_pairs = np.sum(np.logical_and(pairwise_distances_condensed > 300,
-                                                    pairwise_distances_condensed <= 400))
+    num_long_distance_pairs = np.sum(np.logical_and(pairwise_distances_condensed > exp_config.INTERMEDIATE_DISTANCE,
+                                                    pairwise_distances_condensed <= exp_config.LONG_DISTANCE))
 
-    num_very_long_distance_pairs = np.sum(pairwise_distances_condensed > 300)
+    num_very_long_distance_pairs = np.sum(pairwise_distances_condensed > exp_config.INTERMEDIATE_DISTANCE)
     return num_short_distance_pairs, num_medium_distance_pairs, num_long_distance_pairs, num_very_long_distance_pairs
 
 
-def count_connections(edge_lengths):
+def count_connections(edge_lengths, exp_config):
     """
     Counts the number of connections in a well in each of 4 different distance ranges [pixels]
-    (0-100, 100-300, 300-400, 300-inf).
+
 
     Parameters
     ----------
     edge_lengths: ndarray
        ndarray containing the length distribution of connections via neurites in a well
-
+    exp_config: Instance of class ExperimentConfig
+        Holds many tune-able parameters of the experiment (connection distances etc.)
     Returns
     -------
     short_edges_count: int
-        number of connected cell pairs in a 0-100 pixels distance
+        number of connected cell pairs in a 0-SHORT_DISTANCE pixels distance
     medium_edges_count: int
-        number of connected cell pairs in a 100-300 pixels distance
+        number of connected cell pairs in a SHORT_DISTANCE-INTERMEDIATE_DISTANCE pixels distance
     long_edges_count: int
-        number of connected cell pairs in a 300-400 pixels distance
+        number of connected cell pairs in a INTERMEDIATE_DISTANCE-LONG_DISTANCE pixels distance
     very_long_edges_count: int
-                number of connected cell pairs in a 300-inf pixels distance
+                number of connected cell pairs in a INTERMEDIATE_DISTANCE-inf pixels distance
     """
-    short_edges_count = np.sum(edge_lengths <= 100)
-    medium_edges_count = np.sum(np.logical_and(edge_lengths > 100, edge_lengths <= 300))
-    long_edges_count = np.sum(np.logical_and(edge_lengths > 300, edge_lengths <= 400))
-    very_long_edges_count = np.sum(edge_lengths > 300)
+    short_edges_count = np.sum(edge_lengths <= exp_config.SHORT_DISTANCE)
+
+    medium_edges_count = np.sum(np.logical_and(edge_lengths > exp_config.SHORT_DISTANCE,
+                                               edge_lengths <= exp_config.INTERMEDIATE_DISTANCE))
+
+    long_edges_count = np.sum(np.logical_and(edge_lengths > exp_config.INTERMEDIATE_DISTANCE,
+                                             edge_lengths <= exp_config.LONG_DISTANCE))
+
+    very_long_edges_count = np.sum(edge_lengths > exp_config.INTERMEDIATE_DISTANCE)
+
     return short_edges_count, medium_edges_count, long_edges_count, very_long_edges_count
 
 
