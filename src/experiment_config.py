@@ -15,7 +15,7 @@ class ExperimentConfig:
     # Moedl paths:
     # -------------------------------------------------------------------------
     NUCLEI_MASK_RCNN_WEIGHTS_PATH = "deepretina_final.h5"
-    NEURITE_SEGMENTATION_MODEL_PATH = "Old_Architechture_neurite_net_cosine.h5"
+    NEURITE_SEGMENTATION_MODEL_PATH = "neurite_unet_weights.h5"
 
 
     # Parameters for a boolean mask that containing a round search area to search
