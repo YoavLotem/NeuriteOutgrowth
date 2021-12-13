@@ -4,7 +4,7 @@
 A tool for neurite outgrowth and toxicity estimation from microscopy images using deep learning and novel graph-based connectivity measures.
 
 
-![image](https://github.com/YoavLotem/Automatic-Neurite-Outgrowth-Quantification-Using-Deep-Learning/blob/master/assets/readme_im.png)
+![image](https://github.com/YoavLotem/Automatic-Neurite-Outgrowth-Quantification-Using-Deep-Learning/blob/master/assets/readme_im_compressed.png)
 
 
 ## Features
