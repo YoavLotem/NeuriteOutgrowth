@@ -19,7 +19,7 @@ A tool for neurite outgrowth and toxicity estimation from microscopy images usin
 
 
 ## Getting Started
-- Download the [Mask RCNN weights](https://drive.google.com/file/d/1sX5u0dEBvA8Y8z8UObXsty-CE_TjWNKH/view?usp=sharing) and place them in repository root directory. 
+- Download the [Mask RCNN weights](https://drive.google.com/file/d/1sX5u0dEBvA8Y8z8UObXsty-CE_TjWNKH/view?usp=sharing)(too large for Github) and place them in repository root directory. 
 
 - [Experiment_Demo.ipynb](https://github.com/YoavLotem/Automatic-Neurite-Outgrowth-Quantification-Using-Deep-Learning/blob/master/Experiment_Demo.ipynb) Is the easiest way to start analyzing experiment data (e.g. high throuput screening data from a 96 wells plate). 
 
