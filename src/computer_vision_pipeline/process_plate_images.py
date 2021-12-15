@@ -1,9 +1,0 @@
-from src.computer_vision_pipeline.experiment_inference_utils import extract_data_from_plate_images
-from src.experiment_config import ExperimentConfig
-if __name__ == "__main__":
-    folder = r'SHSY5Y 8 day diff 5 drugs 020621/Hila_diff shsy5y_cal_DAPI_principle1_SHSY5Y 5diff cal DAPI 5 drugs_2021.06.02.13.58.15'
-    saving_folder = r'experiments results with graphs/validation experiments/Hila_diff shsy5y_cal_DAPI_principle1_SHSY5Y 5diff cal DAPI 5 drugs_2021.06.02.13.58.15'
-    exp_config = ExperimentConfig()
-    extract_data_from_plate_images(folder, saving_folder, exp_config)
-
-
