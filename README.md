@@ -31,7 +31,5 @@ A tool for neurite outgrowth and toxicity estimation from microscopy images usin
 
 TO DO
     
-## Requirements
-To DO
 ## Citation
 To DO
