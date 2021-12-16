@@ -7,7 +7,7 @@ imgaug==0.2.9
 imageio==2.4.1
 networkx==2.5.1
 h5py==2.10.0
-skan==0.9
+skan==0.10.0
 tqdm==4.62.3
 pandas==1.1.5
-numba>=0.29
+numba==0.51.2
