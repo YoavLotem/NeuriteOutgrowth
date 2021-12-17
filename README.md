@@ -35,7 +35,7 @@ A tool for neurite outgrowth and toxicity estimation from microscopy images usin
 pip install -r requirements.txt
 ```
 
-4. Download the [Mask RCNN weights](https://drive.google.com/file/d/1sX5u0dEBvA8Y8z8UObXsty-CE_TjWNKH/view?usp=sharing) (too large for Github) and place them in repository root directory. 
+3. Download the [Mask RCNN weights](https://drive.google.com/file/d/1sX5u0dEBvA8Y8z8UObXsty-CE_TjWNKH/view?usp=sharing) (too large for Github) and place them in repository root directory. 
     
 ## Citation
 To be writen :)
