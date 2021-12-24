@@ -1,8 +1,9 @@
 
 #  Neurite Outgrowth Estimation Using Deep Learning & Graph Theory
 
-A tool for neurite outgrowth and toxicity estimation from microscopy images using deep learning and novel graph-based connectivity measures.
-
+A tool for automatic neurite outgrowth and cell viability estimation from microscopy images using deep learning and graph theory. 
+It is optimized for Neuroblastoma cells in low power (20X) magnification and a dual FITC & DAPI channels setup.
+It can be used for large scale high-throughput drug screening and validation experiments.  
 
 ![image](https://github.com/YoavLotem/Automatic-Neurite-Outgrowth-Quantification-Using-Deep-Learning/blob/master/assets/readme_im_compressed.png)
 
