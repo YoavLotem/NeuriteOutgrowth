@@ -27,6 +27,7 @@ It can be used for large scale high-throughput drug screening and validation exp
 
 - (optional) To fully understand the computer vision pipeline, feature extraction, graph representation, novel connectivity features and outlier removal algorithms please refer to the Methods section in [Thesis](https://docs.google.com/document/d/1lT-KUPgt1lQyyrHHMAMJNzhnqgL5ts-7/edit?usp=sharing&ouid=103117274956717598825&rtpof=true&sd=true) or inspect [outlier_removal.py](https://github.com/YoavLotem/Automatic-Neurite-Outgrowth-Quantification-Using-Deep-Learning/blob/master/src/data_processing/outlier_removal.py), [feature_extraction.py](https://github.com/YoavLotem/Automatic-Neurite-Outgrowth-Quantification-Using-Deep-Learning/blob/master/src/data_processing/feature_extraction.py), [graph_representation.py](https://github.com/YoavLotem/Automatic-Neurite-Outgrowth-Quantification-Using-Deep-Learning/blob/master/src/computer_vision_pipeline/graph/graph_representation.py), [experiment_inference_utils.py](https://github.com/YoavLotem/Automatic-Neurite-Outgrowth-Quantification-Using-Deep-Learning/blob/master/src/computer_vision_pipeline/experiment_inference_utils.py). 
 
+- To train your own neurite segmentation model you can use our [neurite segmentation dataset](https://drive.google.com/drive/folders/1tak8IqFesvtB9qoFPB2yogzXvtqe6YHS?usp=sharing)
 ## Installation
 
 1. Clone this repository
