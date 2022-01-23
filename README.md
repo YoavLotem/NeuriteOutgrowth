@@ -17,7 +17,7 @@ It can be used for large scale high-throughput drug screening and validation exp
 - Nuclei instance segmentation from [https://github.com/Lopezurrutia/DSB_2018](https://github.com/Lopezurrutia/DSB_2018)
 - Cell instance segmentation
 - Cell foreground segmentation
-- Two neurite segmentaion dataset for live and fixed cells staining.
+- Two neurite segmentaion datasets for live and fixed cells staining.
 
 ## Getting Started
 
